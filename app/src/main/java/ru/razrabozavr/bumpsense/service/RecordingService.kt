@@ -1,0 +1,188 @@
+package ru.razrabozavr.bumpsense.service
+
+import android.app.Notification
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.IBinder
+import androidx.core.app.NotificationCompat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import ru.razrabozavr.bumpsense.BumpSenseApp
+import ru.razrabozavr.bumpsense.R
+import ru.razrabozavr.bumpsense.data.location.LocationClient
+import ru.razrabozavr.bumpsense.data.sensor.AccelerometerClient
+import ru.razrabozavr.bumpsense.data.sensor.BumpIndexCalculator
+import ru.razrabozavr.bumpsense.data.sensor.RecordingDataCollector
+import ru.razrabozavr.bumpsense.domain.model.Track
+import ru.razrabozavr.bumpsense.domain.model.TrackPoint
+import ru.razrabozavr.bumpsense.presentation.MainActivity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class RecordingService : Service() {
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var recordingJob: Job? = null
+
+    private lateinit var locationClient: LocationClient
+    private lateinit var accelerometerClient: AccelerometerClient
+    private lateinit var bumpIndexCalculator: BumpIndexCalculator
+    private lateinit var dataCollector: RecordingDataCollector
+
+    private var currentTrackId: Long = 0L
+    private val trackPoints = mutableListOf<TrackPoint>()
+
+    override fun onCreate() {
+        super.onCreate()
+
+        val app = application as BumpSenseApp
+        locationClient = LocationClient(this)
+        accelerometerClient = AccelerometerClient(this)
+        bumpIndexCalculator = BumpIndexCalculator()
+        dataCollector = RecordingDataCollector(locationClient, accelerometerClient, bumpIndexCalculator)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_START_RECORDING -> {
+                startForeground(NOTIFICATION_ID, createNotification())
+                startRecording()
+            }
+            ACTION_STOP_RECORDING -> {
+                stopRecording()
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
+
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun startRecording() {
+        serviceScope.launch {
+            // Создаем новый трек
+            val trackName = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+                .format(Date())
+
+            val track = Track(
+                name = trackName,
+                startTime = System.currentTimeMillis()
+            )
+
+            val app = application as BumpSenseApp
+            currentTrackId = app.trackRepository.insertTrack(track)
+            dataCollector.setTrackId(currentTrackId)
+            bumpIndexCalculator.reset()
+            trackPoints.clear()
+
+            // Запускаем сбор данных
+            dataCollector.collectTrackPoints()
+                .onEach { trackPoint ->
+                    trackPoints.add(trackPoint)
+
+                    // Сохраняем точку в БД
+                    app.trackRepository.insertTrack(
+                        track.copy(
+                            id = currentTrackId,
+                            points = trackPoints
+                        )
+                    )
+
+                    // Отправляем обновление в UI
+                    sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
+                        setPackage(packageName)
+                        putExtra(EXTRA_LATITUDE, trackPoint.latitude)
+                        putExtra(EXTRA_LONGITUDE, trackPoint.longitude)
+                        putExtra(EXTRA_BUMP_INDEX, trackPoint.bumpIndex)
+                    })
+                }
+                .catch { e ->
+                    e.printStackTrace()
+                }
+                .launchIn(this)
+        }
+    }
+
+    private fun stopRecording() {
+        recordingJob?.cancel()
+        recordingJob = null
+
+        serviceScope.launch {
+            val app = application as BumpSenseApp
+
+            // Обновляем трек с endTime
+            val track = app.trackRepository.getTrackById(currentTrackId)
+            track?.let {
+                app.trackRepository.updateTrack(
+                    it.copy(endTime = System.currentTimeMillis())
+                )
+            }
+
+            // Отправляем уведомление об остановке
+            sendBroadcast(Intent(ACTION_RECORDING_STOPPED).apply {
+                setPackage(packageName)
+            })
+        }
+    }
+
+    private fun createNotification(): Notification {
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(this, BumpSenseApp.RECORDING_CHANNEL_ID)
+            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentText(getString(R.string.service_notification_text))
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .build()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+
+    companion object {
+        const val ACTION_START_RECORDING = "action_start_recording"
+        const val ACTION_STOP_RECORDING = "action_stop_recording"
+        const val ACTION_TRACK_POINT_UPDATE = "action_track_point_update"
+        const val ACTION_RECORDING_STOPPED = "action_recording_stopped"
+
+        const val EXTRA_LATITUDE = "extra_latitude"
+        const val EXTRA_LONGITUDE = "extra_longitude"
+        const val EXTRA_BUMP_INDEX = "extra_bump_index"
+
+        private const val NOTIFICATION_ID = 1
+
+        fun startRecording(context: Context) {
+            val intent = Intent(context, RecordingService::class.java).apply {
+                action = ACTION_START_RECORDING
+            }
+            context.startForegroundService(intent)
+        }
+
+        fun stopRecording(context: Context) {
+            val intent = Intent(context, RecordingService::class.java).apply {
+                action = ACTION_STOP_RECORDING
+            }
+            context.startService(intent)
+        }
+    }
+}

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">КочкаДетекто</string>
+
+    <!-- Map Screen -->
+    <string name="current_location">Мое местоположение</string>
+    <string name="toggle_history">Показать/скрыть историю</string>
+    <string name="export_tracks">Экспорт треков</string>
+    <string name="import_tracks">Импорт треков</string>
+    <string name="start_recording">Начать запись</string>
+    <string name="stop_recording">Остановить запись</string>
+
+    <!-- Permissions -->
+    <string name="permission_location_required">Требуется разрешение на доступ к местоположению</string>
+    <string name="permission_location_rationale">Приложению необходим доступ к местоположению для отслеживания маршрута и неровностей дороги</string>
+    <string name="permission_background_location_rationale">Для записи трека в фоновом режиме требуется доступ к местоположению в фоне</string>
+
+    <!-- Recording Service -->
+    <string name="service_notification_title">КочкаДетекто</string>
+    <string name="service_notification_text">Идет запись маршрута…</string>
+    <string name="service_channel_name">Запись маршрута</string>
+    <string name="service_channel_description">Уведомление о работе сервиса записи маршрута</string>
+
+    <!-- Export/Import -->
+    <string name="export_success">Треки успешно экспортированы</string>
+    <string name="export_error">Ошибка при экспорте треков</string>
+    <string name="import_success">Треки успешно импортированы</string>
+    <string name="import_error">Ошибка при импорте треков</string>
+    <string name="select_track_to_export">Выберите трек для экспорта</string>
+
+    <!-- Bump Levels -->
+    <string name="bump_level_smooth">Ровная дорога</string>
+    <string name="bump_level_slight">Незначительная тряска</string>
+    <string name="bump_level_moderate">Умеренная тряска</string>
+    <string name="bump_level_strong">Сильная тряска</string>
+    <string name="bump_level_extreme">Экстремальная тряска</string>
+
+    <!-- General -->
+    <string name="ok">ОК</string>
+    <string name="cancel">Отмена</string>
+    <string name="delete">Удалить</string>
+    <string name="error">Ошибка</string>
+    <string name="loading">Загрузка…</string>
+
+    <!-- Export/Import Dialog -->
+    <string name="no_tracks_available">Нет сохраненных треков</string>
+    <string name="export_last_track">Будет экспортирован последний записанный трек.</string>
+    <string name="export_action">Экспортировать</string>
+</resources>
