@@ -4,7 +4,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
-import ru.razrabozavr.bumpsense.data.local.entity.TrackEntity
 import ru.razrabozavr.bumpsense.data.local.mapper.toDomain
 import ru.razrabozavr.bumpsense.data.local.mapper.toEntity
 import ru.razrabozavr.bumpsense.domain.model.Track
@@ -47,14 +46,9 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
     }
 
     override suspend fun updateTrack(track: Track) {
-        // Обновляем метаданные трека
-        val trackEntity = track.toEntity()
-        trackDao.updateTrack(trackEntity)
-
-        // ✅ ПРАВИЛЬНО: Удаляем ТОЛЬКО точки, а не весь трек
+        trackDao.updateTrack(track.toEntity())
         trackDao.deletePointsByTrackId(track.id)
 
-        // Вставляем обновленные точки
         if (track.points.isNotEmpty()) {
             val pointsWithTrackId = track.points.map {
                 it.copy(trackId = track.id).toEntity()
@@ -73,26 +67,25 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         bumpIndex: Int,
         radiusMeters: Double
     ) {
-        val allTracks = getAllTracks().first()
+        val latDelta = radiusMeters / 111_000.0
+        val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(latitude)))
 
-        val updatedTracks = allTracks.map { track ->
-            val updatedPoints = track.points.map { point ->
-                val distance = calculateDistance(
-                    point.latitude, point.longitude,
-                    latitude, longitude
-                )
+        val minLat = latitude - latDelta
+        val maxLat = latitude + latDelta
+        val minLon = longitude - lonDelta
+        val maxLon = longitude + lonDelta
 
-                if (distance <= radiusMeters) {
-                    point.copy(bumpIndex = bumpIndex)
-                } else {
-                    point
-                }
+        val candidates = trackDao.getPointsInBoundingBox(minLat, maxLat, minLon, maxLon)
+
+        candidates.forEach { pointEntity ->
+            val distance = calculateDistance(
+                pointEntity.latitude, pointEntity.longitude,
+                latitude, longitude
+            )
+
+            if (distance <= radiusMeters) {
+                trackDao.updatePointBumpIndex(pointEntity.id, bumpIndex)
             }
-            track.copy(points = updatedPoints)
-        }
-
-        updatedTracks.forEach { track ->
-            updateTrack(track)
         }
     }
 
@@ -100,7 +93,7 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         lat1: Double, lon1: Double,
         lat2: Double, lon2: Double
     ): Double {
-        val earthRadius = 6371000.0
+        val earthRadius = 6_371_000.0
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
 

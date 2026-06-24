@@ -7,21 +7,22 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
 import android.net.Uri
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
+import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.mapper.GeoJsonMapper
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.service.RecordingService
-import android.provider.OpenableColumns
-import android.util.Log
 
 data class MapUiState(
     val isRecording: Boolean = false,
@@ -47,6 +48,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val trackRepository = (application as BumpSenseApp).trackRepository
 
+    // ✅ GPS клиент для постоянного отслеживания местоположения
+    private val locationClient = LocationClient(application)
+    private var locationJob: Job? = null
+
     private val _showExportDialog = MutableStateFlow(false)
     val showExportDialog: StateFlow<Boolean> = _showExportDialog.asStateFlow()
 
@@ -69,16 +74,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     )
 
                     addTrackPoint(trackPoint)
-                    updateCurrentLocation(Location("").apply {
-                        this.latitude = latitude
-                        this.longitude = longitude
-                    })
                 }
                 RecordingService.ACTION_RECORDING_STOPPED -> {
+                    Log.d("BumpSense", "⏹️ Запись остановлена (GPS продолжает работать)")
                     _uiState.update {
                         it.copy(
                             isRecording = false,
-                            gpsStatus = GpsStatus.UNAVAILABLE,
                             snackbarMessage = "Запись маршрута завершена"
                         )
                     }
@@ -90,6 +91,39 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadHistoryTracks()
         registerReceiver()
+        startGpsTracking()  // ✅ Запускаем GPS сразу при создании ViewModel
+    }
+
+    /**
+     * Запускает постоянное отслеживание GPS.
+     * Работает независимо от режима записи.
+     */
+    private fun startGpsTracking() {
+        if (locationJob?.isActive == true) {
+            Log.d("BumpSense", "⏸️ GPS уже работает")
+            return
+        }
+
+        Log.d("BumpSense", " Запуск постоянного GPS-трекинга")
+
+        locationJob = viewModelScope.launch {
+            try {
+                locationClient.getLocationUpdates(2000L).collect { location ->
+                    Log.d("BumpSense", "📍 GPS обновление: ${location.latitude}, ${location.longitude}")
+                    _uiState.update {
+                        it.copy(
+                            currentLocation = location,
+                            gpsStatus = GpsStatus.FOUND  // GPS найден
+                        )
+                    }
+                }
+            } catch (e: SecurityException) {
+                Log.e("BumpSense", "❌ Нет разрешения на GPS", e)
+                _uiState.update { it.copy(gpsStatus = GpsStatus.UNAVAILABLE) }
+            } catch (e: Exception) {
+                Log.e("BumpSense", "❌ Ошибка GPS", e)
+            }
+        }
     }
 
     private fun registerReceiver() {
@@ -119,24 +153,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleRecording() {
         val context = getApplication<Application>()
         if (_uiState.value.isRecording) {
+            Log.d("BumpSense", "⏹️ Остановка записи (GPS продолжает работать)")
             RecordingService.stopRecording(context)
         } else {
+            Log.d("BumpSense", "▶️ Начало записи")
             RecordingService.startRecording(context)
-            _uiState.update { it.copy(isRecording = true, gpsStatus = GpsStatus.FOUND) }
+            _uiState.update {
+                it.copy(
+                    isRecording = true,
+                    currentTrackPoints = emptyList()  // Очищаем текущий трек
+                )
+            }
         }
     }
 
     fun toggleHistoryVisibility() {
         _uiState.update { it.copy(isHistoryVisible = !it.isHistoryVisible) }
-    }
-
-    fun updateCurrentLocation(location: Location) {
-        _uiState.update {
-            it.copy(
-                currentLocation = location,
-                gpsStatus = GpsStatus.FOUND
-            )
-        }
     }
 
     fun addTrackPoint(point: TrackPoint) {
@@ -151,6 +183,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updatePermissionState(granted: Boolean) {
         _uiState.update { it.copy(locationPermissionGranted = granted) }
+        if (granted) {
+            // Если разрешение получено - запускаем GPS
+            startGpsTracking()
+        } else {
+            _uiState.update { it.copy(gpsStatus = GpsStatus.UNAVAILABLE) }
+        }
     }
 
     fun setShowExportDialog(show: Boolean) {
@@ -178,19 +216,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
-
-                // Проверяем расширение файла
-                val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (cursor.moveToFirst() && nameIndex != -1) {
-                        cursor.getString(nameIndex)
-                    } else {
-                        null
-                    }
-                }
-
-                Log.d("BumpSense", "📥 Импорт файла: $fileName")
-
                 val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
 
                 if (jsonString != null) {
@@ -198,16 +223,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     if (track != null) {
                         trackRepository.insertTrack(track)
                         _uiState.update { it.copy(snackbarMessage = "Трек успешно импортирован") }
-                        Log.d("BumpSense", "✅ Трек импортирован: ${track.name}")
                     } else {
                         _uiState.update { it.copy(snackbarMessage = "Неверный формат файла") }
-                        Log.e("BumpSense", "❌ Неверный формат файла")
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(snackbarMessage = "Ошибка при импорте трека") }
-                Log.e("BumpSense", "❌ Ошибка импорта", e)
             }
         }
     }
@@ -218,6 +240,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        // Останавливаем GPS только когда ViewModel уничтожается
+        locationJob?.cancel()
         try {
             getApplication<Application>().unregisterReceiver(trackPointReceiver)
         } catch (e: Exception) {

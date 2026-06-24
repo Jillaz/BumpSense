@@ -46,21 +46,20 @@ fun MapLibreView(
     AndroidView(
         modifier = modifier,
         factory = { context ->
+            Log.d("BumpSense", "️ Создание MapView...")
             MapView(context).apply {
                 onCreate(null)
                 getMapAsync { map ->
-                    Log.d("BumpSense", "🗺️ Загрузка стиля карты...")
+                    Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
 
-                    // Создаем стиль программно с прямыми тайлами OSM
-                    val styleJson = createSimpleStyleJson()
-                    val style = Style.Builder().fromJson(styleJson)
-
-                    map.setStyle(style) { loadedStyle ->
-                        Log.d("BumpSense", "✅ Стиль загружен успешно")
+                    map.setStyle(Style.Builder().fromUri("asset://osm_style.json")) { loadedStyle ->
+                        Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
                         initializeMapLayers(loadedStyle)
                         enableLocationComponent(this, map, loadedStyle)
                         mapLibreMap = map
                         onMapReady(map)
+
+                        Log.d("BumpSense", "✅ Карта готова к использованию")
                     }
                 }
             }
@@ -72,11 +71,41 @@ fun MapLibreView(
         }
     )
 
-    // Автоматическое центрирование
+    // Автоматическое центрирование при получении локации
     LaunchedEffect(currentLocation?.latitude, currentLocation?.longitude) {
         val map = mapLibreMap
         if (map != null && currentLocation != null) {
-            Log.d("BumpSense", "🎯 Авто-центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", " Авто-центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            val cameraPosition = CameraPosition.Builder()
+                .target(LatLng(currentLocation.latitude, currentLocation.longitude))
+                .zoom(16.0)
+                .build()
+            map.animateCamera(
+                CameraUpdateFactory.newCameraPosition(cameraPosition),
+                1000
+            )
+        } else {
+            Log.d("BumpSense", "⏸️ Авто-центрирование пропущено: map=$map, location=$currentLocation")
+        }
+    }
+
+    // Ручное центрирование по кнопке
+    LaunchedEffect(centerTrigger) {
+        if (centerTrigger > 0) {
+            Log.d("BumpSense", "👆 Кнопка центрирования нажата (trigger=$centerTrigger)")
+
+            val map = mapLibreMap
+            if (map == null) {
+                Log.e("BumpSense", "❌ Карта еще не инициализирована")
+                return@LaunchedEffect
+            }
+
+            if (currentLocation == null) {
+                Log.e("BumpSense", " Местоположение еще не получено (GPS ищет...)")
+                return@LaunchedEffect
+            }
+
+            Log.d("BumpSense", "🎯 Ручное центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)
@@ -87,84 +116,37 @@ fun MapLibreView(
             )
         }
     }
-
-    // Ручное центрирование
-    LaunchedEffect(centerTrigger) {
-        if (centerTrigger > 0) {
-            val map = mapLibreMap
-            if (map != null && currentLocation != null) {
-                Log.d("BumpSense", " Ручное центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
-                val cameraPosition = CameraPosition.Builder()
-                    .target(LatLng(currentLocation.latitude, currentLocation.longitude))
-                    .zoom(16.0)
-                    .build()
-                map.animateCamera(
-                    CameraUpdateFactory.newCameraPosition(cameraPosition),
-                    1000
-                )
-            }
-        }
-    }
-}
-
-/**
- * Создает простой JSON стиль для MapLibre с использованием тайлов OpenStreetMap
- */
-private fun createSimpleStyleJson(): String {
-    return """
-    {
-        "version": 8,
-        "name": "Simple OSM Style",
-        "sources": {
-            "osm-tiles": {
-                "type": "raster",
-                "tiles": [
-                    "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                    "https://c.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                ],
-                "tileSize": 256,
-                "attribution": "© OpenStreetMap contributors"
-            }
-        },
-        "layers": [
-            {
-                "id": "osm-layer",
-                "type": "raster",
-                "source": "osm-tiles",
-                "minzoom": 0,
-                "maxzoom": 19
-            }
-        ]
-    }
-    """.trimIndent()
 }
 
 private fun initializeMapLayers(style: Style) {
-    style.addSource(GeoJsonSource(CURRENT_TRACK_SOURCE_ID))
-    style.addSource(GeoJsonSource(HISTORY_TRACK_SOURCE_ID))
+    try {
+        style.addSource(GeoJsonSource(CURRENT_TRACK_SOURCE_ID))
+        style.addSource(GeoJsonSource(HISTORY_TRACK_SOURCE_ID))
 
-    // Исторические треки — ТЕПЕРЬ С ЦВЕТАМИ (data-driven)
-    style.addLayer(
-        LineLayer(HISTORY_TRACK_LAYER_ID, HISTORY_TRACK_SOURCE_ID).withProperties(
-            PropertyFactory.lineWidth(5f),
-            PropertyFactory.lineOpacity(0.8f),
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-            PropertyFactory.lineColor(Expression.get("color"))  // ← Изменено с Color.GRAY
+        style.addLayer(
+            LineLayer(HISTORY_TRACK_LAYER_ID, HISTORY_TRACK_SOURCE_ID).withProperties(
+                PropertyFactory.lineWidth(5f),
+                PropertyFactory.lineOpacity(0.8f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineColor(Expression.get("color"))
+            )
         )
-    )
 
-    // Текущий трек — с цветами
-    style.addLayer(
-        LineLayer(CURRENT_TRACK_LAYER_ID, CURRENT_TRACK_SOURCE_ID).withProperties(
-            PropertyFactory.lineWidth(8f),
-            PropertyFactory.lineOpacity(1f),
-            PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
-            PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-            PropertyFactory.lineColor(Expression.get("color"))
+        style.addLayer(
+            LineLayer(CURRENT_TRACK_LAYER_ID, CURRENT_TRACK_SOURCE_ID).withProperties(
+                PropertyFactory.lineWidth(8f),
+                PropertyFactory.lineOpacity(1f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineColor(Expression.get("color"))
+            )
         )
-    )
+
+        Log.d("BumpSense", "✅ Слои треков инициализированы")
+    } catch (e: Exception) {
+        Log.e("BumpSense", "❌ Ошибка инициализации слоев", e)
+    }
 }
 
 private fun enableLocationComponent(
@@ -207,19 +189,23 @@ private fun updateTrackLayers(
     historyTracks: List<List<TrackPoint>>
 ) {
     mapLibreMap.getStyle { style ->
-        val currentTrackSource = style.getSourceAs<GeoJsonSource>(CURRENT_TRACK_SOURCE_ID)
-        if (currentTrackPoints.size > 1) {
-            val features = createColoredLineFeatures(currentTrackPoints)
-            currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(features))
-        } else {
-            currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-        }
+        try {
+            val currentTrackSource = style.getSourceAs<GeoJsonSource>(CURRENT_TRACK_SOURCE_ID)
+            if (currentTrackPoints.size > 1) {
+                val features = createColoredLineFeatures(currentTrackPoints)
+                currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(features))
+            } else {
+                currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
+            }
 
-        val historyTrackSource = style.getSourceAs<GeoJsonSource>(HISTORY_TRACK_SOURCE_ID)
-        val historyFeatures = historyTracks.flatMap { points ->
-            if (points.size > 1) createColoredLineFeatures(points) else emptyList()
+            val historyTrackSource = style.getSourceAs<GeoJsonSource>(HISTORY_TRACK_SOURCE_ID)
+            val historyFeatures = historyTracks.flatMap { points ->
+                if (points.size > 1) createColoredLineFeatures(points) else emptyList()
+            }
+            historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyFeatures))
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка обновления слоев", e)
         }
-        historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyFeatures))
     }
 }
 

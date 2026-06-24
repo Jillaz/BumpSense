@@ -1,10 +1,15 @@
 package ru.razrabozavr.bumpsense.presentation.map
 
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
@@ -29,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.presentation.components.AccelerometerPanel
+import ru.razrabozavr.bumpsense.presentation.components.AppMenu
 import ru.razrabozavr.bumpsense.presentation.components.ControlPanel
 import ru.razrabozavr.bumpsense.presentation.components.TopStatusBar
 import ru.razrabozavr.bumpsense.presentation.permissions.PermissionHandler
@@ -47,9 +53,11 @@ fun MapScreen(
     val permissionHandler = remember { PermissionHandler(context) }
 
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // Счетчик для ручного центрирования
     var centerTrigger by remember { mutableIntStateOf(0) }
+
+    val systemBarsPadding = WindowInsets.systemBars.asPaddingValues()
+    val topPadding = systemBarsPadding.calculateTopPadding()
+    val bottomPadding = systemBarsPadding.calculateBottomPadding()
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
@@ -104,59 +112,85 @@ fun MapScreen(
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = topPadding)
+            ) {
+                TopStatusBar(
+                    gpsStatus = uiState.gpsStatus,
+                    isRecording = uiState.isRecording,
+                    modifier = Modifier.align(Alignment.CenterStart)
+                )
+
+                // ✅ Меню справа вверху
+                AppMenu(
+                    onExportClick = { viewModel.setShowExportDialog(true) },
+                    onImportClick = {
+                        importLauncher.launch(arrayOf("application/json", "*/*"))
+                    },
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                )
+            }
+        },
         bottomBar = {
-            ControlPanel(
-                isRecording = uiState.isRecording,
-                isHistoryVisible = uiState.isHistoryVisible,
-                onRecordClick = {
-                    if (uiState.locationPermissionGranted) {
-                        viewModel.toggleRecording()
-                    }
-                },
-                onHistoryClick = { viewModel.toggleHistoryVisibility() },
-                onExportClick = { viewModel.setShowExportDialog(true) },
-                onImportClick = {
-                    importLauncher.launch(arrayOf("application/json", "*/*"))  // ← Изменено
-                }
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = bottomPadding)
+            ) {
+                ControlPanel(
+                    isRecording = uiState.isRecording,
+                    isHistoryVisible = uiState.isHistoryVisible,
+                    onRecordClick = {
+                        if (uiState.locationPermissionGranted) {
+                            viewModel.toggleRecording()
+                        }
+                    },
+                    onHistoryClick = { viewModel.toggleHistoryVisibility() }
+                )
+            }
         }
-    ) { paddingValues ->
+    ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(innerPadding)
         ) {
             MapLibreView(
                 modifier = Modifier.fillMaxSize(),
                 currentTrackPoints = uiState.currentTrackPoints,
                 historyTracks = if (uiState.isHistoryVisible) uiState.historyTracks else emptyList(),
                 currentLocation = uiState.currentLocation,
-                centerTrigger = centerTrigger  // Передаем счетчик
-            )
-
-            TopStatusBar(
-                gpsStatus = uiState.gpsStatus,
-                isRecording = uiState.isRecording,
-                modifier = Modifier.align(Alignment.TopCenter)
+                centerTrigger = centerTrigger
             )
 
             AccelerometerPanel(
                 magnitude = accelData.magnitude,
                 bumpIndex = accelData.bumpIndex,
                 isAvailable = accelData.isAvailable,
-                modifier = Modifier.align(Alignment.TopStart)
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(
+                        start = 16.dp,
+                        top = 16.dp + topPadding
+                    )
             )
 
-            // FAB кнопка "Мое местоположение" — увеличивает счетчик
             FloatingActionButton(
                 onClick = {
+                    Log.d("BumpSense", " FAB нажата, centerTrigger=$centerTrigger")
                     centerTrigger++
-                    android.util.Log.d("BumpSense", " Клик по FAB, centerTrigger=$centerTrigger")
                 },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
+                    .padding(
+                        end = 16.dp,
+                        bottom = 16.dp + bottomPadding
+                    )
             ) {
                 Icon(
                     imageVector = Icons.Default.MyLocation,
