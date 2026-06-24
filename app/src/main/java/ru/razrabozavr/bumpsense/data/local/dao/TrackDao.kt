@@ -13,6 +13,7 @@ import ru.razrabozavr.bumpsense.data.local.entity.TrackPointEntity
 
 @Dao
 interface TrackDao {
+
     @Query("SELECT * FROM tracks ORDER BY startTime DESC")
     fun getAllTracks(): Flow<List<TrackEntity>>
 
@@ -39,6 +40,10 @@ interface TrackDao {
 
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Long)
+
+    // ✅ ДОБАВЛЕНО: Удаление всех точек трека
+    @Query("DELETE FROM track_points WHERE trackId = :trackId")
+    suspend fun deletePointsByTrackId(trackId: Long)
 
     @Transaction
     suspend fun insertTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>): Long {

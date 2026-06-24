@@ -6,11 +6,7 @@ plugins {
 
 android {
     namespace = "ru.razrabozavr.bumpsense"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 37  // Теперь SDK 37 установлен
 
     defaultConfig {
         applicationId = "ru.razrabozavr.bumpsense"
@@ -18,7 +14,6 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

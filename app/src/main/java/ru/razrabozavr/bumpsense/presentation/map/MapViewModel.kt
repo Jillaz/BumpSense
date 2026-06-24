@@ -20,6 +20,8 @@ import ru.razrabozavr.bumpsense.data.mapper.GeoJsonMapper
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.service.RecordingService
+import android.provider.OpenableColumns
+import android.util.Log
 
 data class MapUiState(
     val isRecording: Boolean = false,
@@ -96,7 +98,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             addAction(RecordingService.ACTION_RECORDING_STOPPED)
         }
 
-        // Безопасная регистрация ресивера для Android 14+ (API 34)
         ContextCompat.registerReceiver(
             getApplication(),
             trackPointReceiver,
@@ -177,6 +178,19 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
+
+                // Проверяем расширение файла
+                val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && nameIndex != -1) {
+                        cursor.getString(nameIndex)
+                    } else {
+                        null
+                    }
+                }
+
+                Log.d("BumpSense", "📥 Импорт файла: $fileName")
+
                 val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
 
                 if (jsonString != null) {
@@ -184,13 +198,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     if (track != null) {
                         trackRepository.insertTrack(track)
                         _uiState.update { it.copy(snackbarMessage = "Трек успешно импортирован") }
+                        Log.d("BumpSense", "✅ Трек импортирован: ${track.name}")
                     } else {
                         _uiState.update { it.copy(snackbarMessage = "Неверный формат файла") }
+                        Log.e("BumpSense", "❌ Неверный формат файла")
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(snackbarMessage = "Ошибка при импорте трека") }
+                Log.e("BumpSense", "❌ Ошибка импорта", e)
             }
         }
     }

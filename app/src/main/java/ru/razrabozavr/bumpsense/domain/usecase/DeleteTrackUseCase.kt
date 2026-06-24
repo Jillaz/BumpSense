@@ -7,6 +7,7 @@ class DeleteTrackUseCase(
     private val repository: TrackRepository
 ) {
     suspend operator fun invoke(track: Track) {
-        repository.deleteTrack(track)
+        // Передаем id трека, а не весь объект
+        repository.deleteTrack(track.id)
     }
 }

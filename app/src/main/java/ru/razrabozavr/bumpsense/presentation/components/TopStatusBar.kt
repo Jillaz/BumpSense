@@ -9,8 +9,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,7 +45,6 @@ fun TopStatusBar(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Статус GPS
             Text(
                 text = when (gpsStatus) {
                     GpsStatus.FOUND -> "GPS: Активен"
@@ -58,7 +59,6 @@ fun TopStatusBar(
                 }
             )
 
-            // Индикатор записи (пульсирующая точка)
             if (isRecording) {
                 val infiniteTransition = rememberInfiniteTransition(label = "pulse")
                 val scale by infiniteTransition.animateFloat(
@@ -78,11 +78,11 @@ fun TopStatusBar(
                             .scale(scale)
                             .background(Color.Red, RoundedCornerShape(4.dp))
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "Запись",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.Red,
-                        modifier = Modifier.padding(start = 6.dp)
+                        color = Color.Red
                     )
                 }
             }

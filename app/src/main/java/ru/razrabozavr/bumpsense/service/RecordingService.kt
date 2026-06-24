@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class RecordingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("BumpSense", "🔧 RecordingService: onCreate")
 
         val app = application as BumpSenseApp
         locationClient = LocationClient(this)
@@ -53,6 +55,8 @@ class RecordingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("BumpSense", "📥 RecordingService: onStartCommand, action=${intent?.action}")
+
         when (intent?.action) {
             ACTION_START_RECORDING -> {
                 startForeground(NOTIFICATION_ID, createNotification())
@@ -71,63 +75,92 @@ class RecordingService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startRecording() {
-        serviceScope.launch {
-            // Создаем новый трек
-            val trackName = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-                .format(Date())
+        Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-            val track = Track(
-                name = trackName,
-                startTime = System.currentTimeMillis()
-            )
+        recordingJob = serviceScope.launch {
+            try {
+                val trackName = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+                    .format(Date())
 
-            val app = application as BumpSenseApp
-            currentTrackId = app.trackRepository.insertTrack(track)
-            dataCollector.setTrackId(currentTrackId)
-            bumpIndexCalculator.reset()
-            trackPoints.clear()
+                val track = Track(
+                    name = trackName,
+                    startTime = System.currentTimeMillis()
+                )
 
-            // Запускаем сбор данных
-            dataCollector.collectTrackPoints()
-                .onEach { trackPoint ->
-                    trackPoints.add(trackPoint)
+                val app = application as BumpSenseApp
+                currentTrackId = app.trackRepository.insertTrack(track)
+                dataCollector.setTrackId(currentTrackId)
+                bumpIndexCalculator.reset()
+                trackPoints.clear()
 
-                    // Сохраняем точку в БД
-                    app.trackRepository.insertTrack(
-                        track.copy(
-                            id = currentTrackId,
-                            points = trackPoints
+                Log.d("BumpSense", "🎬 RecordingService: трек создан, ID=$currentTrackId")
+
+                dataCollector.collectTrackPoints()
+                    .onEach { trackPoint ->
+                        trackPoints.add(trackPoint)
+
+                        Log.d("BumpSense", "📍 RecordingService: точка #${trackPoints.size}, bump=${trackPoint.bumpIndex}")
+
+                        // Обновляем ближайшие исторические точки
+                        app.trackRepository.updateNearbyPoints(
+                            latitude = trackPoint.latitude,
+                            longitude = trackPoint.longitude,
+                            bumpIndex = trackPoint.bumpIndex,
+                            radiusMeters = 10.0
                         )
-                    )
 
-                    // Отправляем обновление в UI
-                    sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
-                        setPackage(packageName)
-                        putExtra(EXTRA_LATITUDE, trackPoint.latitude)
-                        putExtra(EXTRA_LONGITUDE, trackPoint.longitude)
-                        putExtra(EXTRA_BUMP_INDEX, trackPoint.bumpIndex)
-                    })
-                }
-                .catch { e ->
-                    e.printStackTrace()
-                }
-                .launchIn(this)
+                        // Сохраняем в БД каждые 5 точек
+                        if (trackPoints.size % 5 == 0) {
+                            app.trackRepository.insertTrack(
+                                track.copy(
+                                    id = currentTrackId,
+                                    points = trackPoints.toList()
+                                )
+                            )
+                            Log.d("BumpSense", " RecordingService: сохранено в БД, точек=${trackPoints.size}")
+                        }
+
+                        // Отправляем обновление в UI
+                        sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
+                            setPackage(packageName)
+                            putExtra(EXTRA_LATITUDE, trackPoint.latitude)
+                            putExtra(EXTRA_LONGITUDE, trackPoint.longitude)
+                            putExtra(EXTRA_BUMP_INDEX, trackPoint.bumpIndex)
+                        })
+                    }
+                    .catch { e ->
+                        Log.e("BumpSense", "❌ RecordingService: ошибка в потоке", e)
+                    }
+                    .launchIn(this)
+
+                Log.d("BumpSense", "✅ RecordingService: сбор данных запущен")
+            } catch (e: Exception) {
+                Log.e("BumpSense", " RecordingService: критическая ошибка", e)
+            }
         }
     }
 
     private fun stopRecording() {
+        Log.d("BumpSense", "⏹️ RecordingService: stopRecording")
+
         recordingJob?.cancel()
         recordingJob = null
 
         serviceScope.launch {
             val app = application as BumpSenseApp
 
-            // Обновляем трек с endTime
-            val track = app.trackRepository.getTrackById(currentTrackId)
-            track?.let {
-                app.trackRepository.updateTrack(
-                    it.copy(endTime = System.currentTimeMillis())
+            // Сохраняем финальный трек
+            if (trackPoints.isNotEmpty()) {
+                val track = Track(
+                    id = currentTrackId,
+                    name = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date()),
+                    startTime = System.currentTimeMillis() - (trackPoints.size * 2000L),
+                    endTime = System.currentTimeMillis(),
+                    points = trackPoints.toList()
                 )
+
+                app.trackRepository.insertTrack(track)
+                Log.d("BumpSense", "💾 RecordingService: финальное сохранение, точек=${trackPoints.size}")
             }
 
             // Отправляем уведомление об остановке
@@ -156,6 +189,7 @@ class RecordingService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d("BumpSense", "🔚 RecordingService: onDestroy")
         serviceScope.cancel()
     }
 
