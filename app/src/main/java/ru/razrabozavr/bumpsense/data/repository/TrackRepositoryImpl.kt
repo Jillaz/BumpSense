@@ -105,4 +105,11 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
 
         return earthRadius * c
     }
+
+    override suspend fun clearDatabase() {
+        // Сначала удаляем точки (из-за FOREIGN KEY CASCADE)
+        trackDao.deleteAllTrackPoints()
+        // Затем удаляем треки
+        trackDao.deleteAllTracks()
+    }
 }

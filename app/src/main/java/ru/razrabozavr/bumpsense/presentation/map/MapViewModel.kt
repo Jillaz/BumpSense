@@ -48,12 +48,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val trackRepository = (application as BumpSenseApp).trackRepository
 
-    // ✅ GPS клиент для постоянного отслеживания местоположения
+    // GPS клиент для постоянного отслеживания местоположения
     private val locationClient = LocationClient(application)
     private var locationJob: Job? = null
 
     private val _showExportDialog = MutableStateFlow(false)
     val showExportDialog: StateFlow<Boolean> = _showExportDialog.asStateFlow()
+
+    // Состояние диалога очистки БД
+    private val _showClearDbDialog = MutableStateFlow(false)
+    val showClearDbDialog: StateFlow<Boolean> = _showClearDbDialog.asStateFlow()
 
     private val trackPointReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -91,7 +95,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadHistoryTracks()
         registerReceiver()
-        startGpsTracking()  // ✅ Запускаем GPS сразу при создании ViewModel
+        startGpsTracking()  // Запускаем GPS сразу при создании ViewModel
     }
 
     /**
@@ -104,7 +108,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        Log.d("BumpSense", " Запуск постоянного GPS-трекинга")
+        Log.d("BumpSense", "🚀 Запуск постоянного GPS-трекинга")
 
         locationJob = viewModelScope.launch {
             try {
@@ -113,7 +117,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             currentLocation = location,
-                            gpsStatus = GpsStatus.FOUND  // GPS найден
+                            gpsStatus = GpsStatus.FOUND
                         )
                     }
                 }
@@ -191,6 +195,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ===== ЭКСПОРТ / ИМПОРТ =====
+
     fun setShowExportDialog(show: Boolean) {
         _showExportDialog.value = show
     }
@@ -230,6 +236,33 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {
                 e.printStackTrace()
                 _uiState.update { it.copy(snackbarMessage = "Ошибка при импорте трека") }
+            }
+        }
+    }
+
+    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
+
+    fun setShowClearDbDialog(show: Boolean) {
+        _showClearDbDialog.value = show
+    }
+
+    fun clearDatabase() {
+        viewModelScope.launch {
+            try {
+                trackRepository.clearDatabase()
+                _uiState.update {
+                    it.copy(
+                        historyTracks = emptyList(),
+                        currentTrackPoints = emptyList(),
+                        snackbarMessage = "База данных полностью очищена"
+                    )
+                }
+                Log.d("BumpSense", "🗑️ База данных очищена")
+            } catch (e: Exception) {
+                Log.e("BumpSense", "❌ Ошибка при очистке БД", e)
+                _uiState.update { it.copy(snackbarMessage = "Ошибка при очистке БД") }
+            } finally {
+                _showClearDbDialog.value = false
             }
         }
     }

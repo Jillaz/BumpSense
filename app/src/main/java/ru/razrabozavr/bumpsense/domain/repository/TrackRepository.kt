@@ -12,6 +12,7 @@ interface TrackRepository {
     /**
      * Полная очистка базы данных (все треки и точки).
      */
+    suspend fun clearDatabase()
     // Новый метод: обновить bumpIndex ближайших точек
     suspend fun updateNearbyPoints(latitude: Double, longitude: Double, bumpIndex: Int, radiusMeters: Double = 10.0)
 }

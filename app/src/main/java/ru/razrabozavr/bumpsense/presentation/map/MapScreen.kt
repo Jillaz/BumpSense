@@ -1,6 +1,5 @@
 package ru.razrabozavr.bumpsense.presentation.map
 
-import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
@@ -10,11 +9,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -49,16 +50,19 @@ fun MapScreen(
     val uiState by viewModel.uiState.collectAsState()
     val accelData by accelerometerViewModel.accelerometerData.collectAsState()
     val showExportDialog by viewModel.showExportDialog.collectAsState()
+    val showClearDbDialog by viewModel.showClearDbDialog.collectAsState()
     val context = LocalContext.current
     val permissionHandler = remember { PermissionHandler(context) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     var centerTrigger by remember { mutableIntStateOf(0) }
 
+    // Отступы системных панелей (статус-бар и навигационная панель)
     val systemBarsPadding = WindowInsets.systemBars.asPaddingValues()
     val topPadding = systemBarsPadding.calculateTopPadding()
     val bottomPadding = systemBarsPadding.calculateBottomPadding()
 
+    // Показ Snackbar при появлении сообщения
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -66,6 +70,7 @@ fun MapScreen(
         }
     }
 
+    // Лаунчер для запроса разрешений
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -77,6 +82,7 @@ fun MapScreen(
         viewModel.updatePermissionState(allGranted)
     }
 
+    // Запрос разрешений при первом запуске
     LaunchedEffect(Unit) {
         permissionHandler.checkPermissions()
         if (!permissionHandler.permissionState.value.allPermissionsGranted) {
@@ -86,6 +92,7 @@ fun MapScreen(
         }
     }
 
+    // Лаунчер экспорта трека
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/geo+json")
     ) { uri ->
@@ -103,6 +110,7 @@ fun MapScreen(
         }
     }
 
+    // Лаунчер импорта трека
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -115,6 +123,7 @@ fun MapScreen(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
+            // Верхняя панель с учетом отступа статус-бара
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -126,17 +135,19 @@ fun MapScreen(
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
 
-                // ✅ Меню справа вверху
+                // Меню справа вверху
                 AppMenu(
                     onExportClick = { viewModel.setShowExportDialog(true) },
                     onImportClick = {
                         importLauncher.launch(arrayOf("application/json", "*/*"))
                     },
+                    onClearDbClick = { viewModel.setShowClearDbDialog(true) },
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
         },
         bottomBar = {
+            // Нижняя панель с учетом отступа навигационной панели
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -160,6 +171,7 @@ fun MapScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Карта MapLibre
             MapLibreView(
                 modifier = Modifier.fillMaxSize(),
                 currentTrackPoints = uiState.currentTrackPoints,
@@ -168,6 +180,7 @@ fun MapScreen(
                 centerTrigger = centerTrigger
             )
 
+            // Панель акселерометра — верхний левый угол
             AccelerometerPanel(
                 magnitude = accelData.magnitude,
                 bumpIndex = accelData.bumpIndex,
@@ -175,14 +188,15 @@ fun MapScreen(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(
-                        start = 16.dp,
-                        top = 16.dp + topPadding
+                        start = 8.dp,
+                        top = 8.dp  // ✅ Используем innerPadding вместо topPadding
                     )
+                    .width(120.dp)
             )
 
+            // Кнопка центрирования карты на текущем местоположении
             FloatingActionButton(
                 onClick = {
-                    Log.d("BumpSense", " FAB нажата, centerTrigger=$centerTrigger")
                     centerTrigger++
                 },
                 modifier = Modifier
@@ -199,6 +213,7 @@ fun MapScreen(
             }
         }
 
+        // Диалог экспорта трека
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
@@ -224,6 +239,35 @@ fun MapScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.setShowExportDialog(false) }) {
+                        Text("Отмена")
+                    }
+                }
+            )
+        }
+
+        // Диалог подтверждения очистки базы данных
+        if (showClearDbDialog) {
+            AlertDialog(
+                onDismissRequest = { viewModel.setShowClearDbDialog(false) },
+                title = { Text("Очистка базы данных") },
+                text = {
+                    Text(
+                        "Вы уверены, что хотите удалить ВСЕ сохраненные треки? " +
+                                "Это действие нельзя отменить."
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { viewModel.clearDatabase() }
+                    ) {
+                        Text(
+                            "Удалить всё",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.setShowClearDbDialog(false) }) {
                         Text("Отмена")
                     }
                 }

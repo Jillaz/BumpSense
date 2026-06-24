@@ -2,6 +2,7 @@ package ru.razrabozavr.bumpsense.presentation.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Menu
@@ -21,11 +22,11 @@ import androidx.compose.ui.Modifier
 fun AppMenu(
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
+    onClearDbClick: () -> Unit,  // ✅ Добавлен параметр
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    // ✅ Обертка Box для правильного позиционирования меню
     Box(modifier = modifier) {
         IconButton(onClick = { expanded = true }) {
             Icon(
@@ -34,7 +35,6 @@ fun AppMenu(
             )
         }
 
-        // ✅ Меню позиционируется относительно IconButton
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false }
@@ -58,6 +58,18 @@ fun AppMenu(
                 },
                 leadingIcon = {
                     Icon(Icons.Default.FileDownload, contentDescription = null)
+                }
+            )
+
+            // ✅ Пункт очистки БД с иконкой DeleteSweep
+            DropdownMenuItem(
+                text = { Text("Очистить базу данных") },
+                onClick = {
+                    expanded = false
+                    onClearDbClick()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = null)
                 }
             )
         }

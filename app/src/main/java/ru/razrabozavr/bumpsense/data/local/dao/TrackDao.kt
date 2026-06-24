@@ -83,4 +83,19 @@ interface TrackDao {
         insertTrackPoints(pointsWithTrackId)
         return trackId
     }
+
+    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
+
+    /**
+     * Удаляет все точки треков.
+     * Вызывается ПЕРЕД deleteAllTracks() из-за внешнего ключа с CASCADE.
+     */
+    @Query("DELETE FROM track_points")
+    suspend fun deleteAllTrackPoints()
+
+    /**
+     * Удаляет все треки.
+     */
+    @Query("DELETE FROM tracks")
+    suspend fun deleteAllTracks()
 }

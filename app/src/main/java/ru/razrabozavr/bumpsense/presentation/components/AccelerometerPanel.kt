@@ -37,6 +37,7 @@ fun AccelerometerPanel(
 ) {
     val bumpLevel = BumpLevel.fromIndex(bumpIndex)
 
+    // Пульсация индикатора в зависимости от величины ускорения
     val pulseScale by animateFloatAsState(
         targetValue = 1f + (magnitude / 20f).coerceIn(0f, 0.5f),
         label = "pulse"
@@ -44,48 +45,52 @@ fun AccelerometerPanel(
 
     Surface(
         modifier = modifier
-            .padding(16.dp)
-            .clip(RoundedCornerShape(12.dp)),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            .clip(RoundedCornerShape(10.dp)),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         tonalElevation = 4.dp
     ) {
         Column(
-            modifier = Modifier.padding(12.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
+            // Заголовок
             Text(
                 text = "Акселерометр",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 11.sp),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             if (!isAvailable) {
                 Text(
-                    text = "Датчик недоступен",
+                    text = "Недоступен",
                     color = Color.Red,
-                    style = MaterialTheme.typography.bodySmall
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
                 )
             } else {
+                // Строка с ускорением
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Ускорение:",
-                        style = MaterialTheme.typography.bodySmall
+                        text = "Ускор.:",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
                     )
                     Text(
-                        text = String.format("%.2f м/с²", magnitude),
+                        text = String.format("%.2f", magnitude),
                         style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Medium
                         )
                     )
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
+                // Строка с индексом
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -93,19 +98,20 @@ fun AccelerometerPanel(
                 ) {
                     Text(
                         text = "Индекс:",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(10.dp)
+                                .size(8.dp)
                                 .scale(pulseScale)
-                                .background(bumpLevel.color, RoundedCornerShape(5.dp))
+                                .background(bumpLevel.color, RoundedCornerShape(4.dp))
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "$bumpIndex / 100",
+                            text = "$bumpIndex",
                             style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = bumpLevel.color
                             )
@@ -113,20 +119,22 @@ fun AccelerometerPanel(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
+                // Название уровня (одной строкой, обрезается если не влезает)
                 Text(
                     text = when (bumpLevel) {
-                        BumpLevel.SMOOTH -> "Ровная дорога"
-                        BumpLevel.SLIGHT -> "Незначительная тряска"
-                        BumpLevel.MODERATE -> "Умеренная тряска"
-                        BumpLevel.STRONG -> "Сильная тряска"
-                        BumpLevel.EXTREME -> "Экстремальная тряска"
+                        BumpLevel.SMOOTH -> "Ровная"
+                        BumpLevel.SLIGHT -> "Лёгкая тряска"
+                        BumpLevel.MODERATE -> "Умеренная"
+                        BumpLevel.STRONG -> "Сильная"
+                        BumpLevel.EXTREME -> "Экстрем."
                     },
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 11.sp,
+                        fontSize = 9.sp,
                         color = bumpLevel.color
-                    )
+                    ),
+                    maxLines = 1
                 )
             }
         }
