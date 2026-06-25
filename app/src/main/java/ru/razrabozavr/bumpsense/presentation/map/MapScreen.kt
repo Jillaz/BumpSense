@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
 import ru.razrabozavr.bumpsense.presentation.components.AccelerometerPanel
@@ -43,6 +44,7 @@ import ru.razrabozavr.bumpsense.presentation.components.ControlPanel
 import ru.razrabozavr.bumpsense.presentation.components.TopStatusBar
 import ru.razrabozavr.bumpsense.presentation.permissions.PermissionHandler
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditScreen
+import ru.razrabozavr.bumpsense.R
 
 @Composable
 fun MapScreen(
@@ -55,6 +57,7 @@ fun MapScreen(
     val accelData by accelerometerViewModel.accelerometerData.collectAsState()
     val showExportDialog by viewModel.showExportDialog.collectAsState()
     val showClearDbDialog by viewModel.showClearDbDialog.collectAsState()
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     // Состояния для режима редактирования
     val trackEditState by viewModel.trackEditState.collectAsState()
@@ -153,6 +156,7 @@ fun MapScreen(
                     },
                     onClearDbClick = { viewModel.setShowClearDbDialog(true) },
                     onEditTracksClick = { viewModel.enterEditMode() },
+                    onAboutClick = { showAboutDialog = true },
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
@@ -336,6 +340,27 @@ fun MapScreen(
                 dismissButton = {
                     TextButton(onClick = { viewModel.setShowClearDbDialog(false) }) {
                         Text("Отмена")
+                    }
+                }
+            )
+        }
+
+        // Диалог "О программе"
+        if (showAboutDialog) {
+            AlertDialog(
+                onDismissRequest = { showAboutDialog = false },
+                title = { Text(stringResource(R.string.about_title)) },
+                text = {
+                    Text(
+                        text = stringResource(R.string.about_description),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = { showAboutDialog = false }
+                    ) {
+                        Text("Закрыть")
                     }
                 }
             )

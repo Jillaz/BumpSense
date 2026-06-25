@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +30,7 @@ fun AppMenu(
     onAppendTracksClick: () -> Unit,
     onClearDbClick: () -> Unit,
     onEditTracksClick: () -> Unit,
+    onAboutClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -97,6 +99,17 @@ fun AppMenu(
                 },
                 leadingIcon = {
                     Icon(Icons.Default.DeleteSweep, contentDescription = null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_about)) },
+                onClick = {
+                    expanded = false
+                    onAboutClick()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Info, contentDescription = null)
                 }
             )
         }
