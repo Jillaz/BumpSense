@@ -32,10 +32,12 @@ import ru.razrabozavr.bumpsense.domain.model.BumpLevel
 fun AccelerometerPanel(
     magnitude: Float,
     bumpIndex: Int,
+    maxBumpIndex: Int,
     isAvailable: Boolean,
     modifier: Modifier = Modifier
 ) {
     val bumpLevel = BumpLevel.fromIndex(bumpIndex)
+    val maxBumpLevel = BumpLevel.fromIndex(maxBumpIndex)
 
     // Пульсация индикатора в зависимости от величины ускорения
     val pulseScale by animateFloatAsState(
@@ -52,10 +54,10 @@ fun AccelerometerPanel(
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            // Заголовок
+            // Заголовок (11.sp → 13.sp)
             Text(
                 text = "Акселерометр",
-                style = MaterialTheme.typography.titleSmall.copy(fontSize = 11.sp),
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
             )
@@ -66,10 +68,10 @@ fun AccelerometerPanel(
                 Text(
                     text = "Недоступен",
                     color = Color.Red,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                 )
             } else {
-                // Строка с ускорением
+                // Строка с ускорением (10.sp → 12.sp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -77,12 +79,12 @@ fun AccelerometerPanel(
                 ) {
                     Text(
                         text = "Ускор.:",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                     )
                     Text(
                         text = String.format("%.2f", magnitude),
                         style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 10.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
                     )
@@ -90,7 +92,7 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Строка с индексом
+                // Строка с текущим индексом
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -98,7 +100,7 @@ fun AccelerometerPanel(
                 ) {
                     Text(
                         text = "Индекс:",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp)
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -111,9 +113,8 @@ fun AccelerometerPanel(
                         Text(
                             text = "$bumpIndex",
                             style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 10.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = bumpLevel.color
                             )
                         )
                     }
@@ -121,7 +122,42 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Название уровня (одной строкой, обрезается если не влезает)
+                // ✅ Максимальное значение — цвет текста ПОСТОЯННЫЙ (не зависит от уровня)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Макс:",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Цветной квадратик индикатора (цвет зависит от уровня)
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(
+                                    if (maxBumpIndex > 0) maxBumpLevel.color
+                                    else Color.Gray.copy(alpha = 0.4f),
+                                    RoundedCornerShape(4.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        // ✅ Текст всегда стандартного цвета
+                        Text(
+                            text = "$maxBumpIndex",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Название уровня (9.sp → 11.sp)
                 Text(
                     text = when (bumpLevel) {
                         BumpLevel.SMOOTH -> "Ровная"
@@ -131,7 +167,7 @@ fun AccelerometerPanel(
                         BumpLevel.EXTREME -> "Экстрем."
                     },
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 9.sp,
+                        fontSize = 11.sp,
                         color = bumpLevel.color
                     ),
                     maxLines = 1

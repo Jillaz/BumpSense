@@ -184,12 +184,13 @@ fun MapScreen(
             AccelerometerPanel(
                 magnitude = accelData.magnitude,
                 bumpIndex = accelData.bumpIndex,
+                maxBumpIndex = accelData.maxBumpIndex,  // ✅ Передаем новое значение
                 isAvailable = accelData.isAvailable,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(
                         start = 8.dp,
-                        top = 8.dp  // ✅ Используем innerPadding вместо topPadding
+                        top = 8.dp
                     )
                     .width(120.dp)
             )
