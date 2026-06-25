@@ -1,13 +1,11 @@
 package ru.razrabozavr.bumpsense.data.repository
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
 import ru.razrabozavr.bumpsense.data.local.mapper.toDomain
 import ru.razrabozavr.bumpsense.data.local.mapper.toEntity
 import ru.razrabozavr.bumpsense.domain.model.Track
-import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.domain.repository.TrackRepository
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -67,6 +65,7 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         bumpIndex: Int,
         radiusMeters: Double
     ) {
+        // Bounding box для быстрой фильтрации
         val latDelta = radiusMeters / 111_000.0
         val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(latitude)))
 
@@ -75,8 +74,10 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         val minLon = longitude - lonDelta
         val maxLon = longitude + lonDelta
 
+        // SQL: быстрая фильтрация кандидатов
         val candidates = trackDao.getPointsInBoundingBox(minLat, maxLat, minLon, maxLon)
 
+        // Kotlin: точный расчет расстояния только для кандидатов
         candidates.forEach { pointEntity ->
             val distance = calculateDistance(
                 pointEntity.latitude, pointEntity.longitude,
@@ -87,6 +88,11 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
                 trackDao.updatePointBumpIndex(pointEntity.id, bumpIndex)
             }
         }
+    }
+
+    override suspend fun clearDatabase() {
+        trackDao.deleteAllTrackPoints()
+        trackDao.deleteAllTracks()
     }
 
     private fun calculateDistance(
@@ -104,12 +110,5 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
 
         return earthRadius * c
-    }
-
-    override suspend fun clearDatabase() {
-        // Сначала удаляем точки (из-за FOREIGN KEY CASCADE)
-        trackDao.deleteAllTrackPoints()
-        // Затем удаляем треки
-        trackDao.deleteAllTracks()
     }
 }

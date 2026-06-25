@@ -39,7 +39,6 @@ fun AccelerometerPanel(
     val bumpLevel = BumpLevel.fromIndex(bumpIndex)
     val maxBumpLevel = BumpLevel.fromIndex(maxBumpIndex)
 
-    // Пульсация индикатора в зависимости от величины ускорения
     val pulseScale by animateFloatAsState(
         targetValue = 1f + (magnitude / 20f).coerceIn(0f, 0.5f),
         label = "pulse"
@@ -54,7 +53,6 @@ fun AccelerometerPanel(
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
-            // Заголовок (11.sp → 13.sp)
             Text(
                 text = "Акселерометр",
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.sp),
@@ -71,7 +69,6 @@ fun AccelerometerPanel(
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                 )
             } else {
-                // Строка с ускорением (10.sp → 12.sp)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -92,7 +89,6 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Строка с текущим индексом
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -114,7 +110,7 @@ fun AccelerometerPanel(
                             text = "$bumpIndex",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
+                                fontWeight = FontWeight.Medium
                             )
                         )
                     }
@@ -122,7 +118,6 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // ✅ Максимальное значение — цвет текста ПОСТОЯННЫЙ (не зависит от уровня)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -133,7 +128,6 @@ fun AccelerometerPanel(
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Цветной квадратик индикатора (цвет зависит от уровня)
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
@@ -144,7 +138,6 @@ fun AccelerometerPanel(
                                 )
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        // ✅ Текст всегда стандартного цвета
                         Text(
                             text = "$maxBumpIndex",
                             style = MaterialTheme.typography.bodySmall.copy(
@@ -157,7 +150,6 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // Название уровня (9.sp → 11.sp)
                 Text(
                     text = when (bumpLevel) {
                         BumpLevel.SMOOTH -> "Ровная"

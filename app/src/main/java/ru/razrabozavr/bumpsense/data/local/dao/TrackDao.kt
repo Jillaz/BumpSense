@@ -15,7 +15,6 @@ import ru.razrabozavr.bumpsense.data.local.entity.TrackPointEntity
 interface TrackDao {
 
     // ===== ТРЕКИ =====
-
     @Query("SELECT * FROM tracks ORDER BY startTime DESC")
     fun getAllTracks(): Flow<List<TrackEntity>>
 
@@ -35,7 +34,6 @@ interface TrackDao {
     suspend fun deleteTrackById(id: Long)
 
     // ===== ТОЧКИ ТРЕКА =====
-
     @Query("SELECT * FROM track_points WHERE trackId = :trackId ORDER BY timestamp ASC")
     suspend fun getTrackPoints(trackId: Long): List<TrackPointEntity>
 
@@ -49,14 +47,6 @@ interface TrackDao {
     suspend fun deletePointsByTrackId(trackId: Long)
 
     // ===== ОПТИМИЗИРОВАННЫЕ МЕТОДЫ ДЛЯ ОБНОВЛЕНИЯ БЛИЖАЙШИХ ТОЧЕК =====
-
-    /**
-     * Быстрая фильтрация точек по bounding box (прямоугольнику).
-     * Отбирает только кандидатов в заданном радиусе, чтобы не загружать все точки из БД.
-     *
-     * 1 градус широты ≈ 111 км
-     * 1 градус долготы ≈ 111 км * cos(широта)
-     */
     @Query("""
         SELECT * FROM track_points 
         WHERE latitude BETWEEN :minLat AND :maxLat
@@ -67,15 +57,17 @@ interface TrackDao {
         minLon: Double, maxLon: Double
     ): List<TrackPointEntity>
 
-    /**
-     * Обновляет только bumpIndex для конкретной точки по ID.
-     * Используется после точного расчета расстояния гаверсинусами.
-     */
     @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
     suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)
 
-    // ===== ТРАНЗАКЦИИ =====
+    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
+    @Query("DELETE FROM track_points")
+    suspend fun deleteAllTrackPoints()
 
+    @Query("DELETE FROM tracks")
+    suspend fun deleteAllTracks()
+
+    // ===== ТРАНЗАКЦИИ =====
     @Transaction
     suspend fun insertTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>): Long {
         val trackId = insertTrack(track)
@@ -83,19 +75,4 @@ interface TrackDao {
         insertTrackPoints(pointsWithTrackId)
         return trackId
     }
-
-    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
-
-    /**
-     * Удаляет все точки треков.
-     * Вызывается ПЕРЕД deleteAllTracks() из-за внешнего ключа с CASCADE.
-     */
-    @Query("DELETE FROM track_points")
-    suspend fun deleteAllTrackPoints()
-
-    /**
-     * Удаляет все треки.
-     */
-    @Query("DELETE FROM tracks")
-    suspend fun deleteAllTracks()
 }

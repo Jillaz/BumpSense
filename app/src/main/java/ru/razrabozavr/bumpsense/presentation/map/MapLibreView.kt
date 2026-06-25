@@ -39,6 +39,7 @@ fun MapLibreView(
     historyTracks: List<List<TrackPoint>>,
     currentLocation: Location? = null,
     centerTrigger: Int = 0,
+    autoFollow: Boolean = false,
     onMapReady: (MapLibreMap) -> Unit = {}
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -46,7 +47,7 @@ fun MapLibreView(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            Log.d("BumpSense", "️ Создание MapView...")
+            Log.d("BumpSense", "🗺️ Создание MapView...")
             MapView(context).apply {
                 onCreate(null)
                 getMapAsync { map ->
@@ -58,8 +59,6 @@ fun MapLibreView(
                         enableLocationComponent(this, map, loadedStyle)
                         mapLibreMap = map
                         onMapReady(map)
-
-                        Log.d("BumpSense", "✅ Карта готова к использованию")
                     }
                 }
             }
@@ -71,11 +70,13 @@ fun MapLibreView(
         }
     )
 
-    // Автоматическое центрирование при получении локации
-    LaunchedEffect(currentLocation?.latitude, currentLocation?.longitude) {
+    // Авто-центрирование только когда autoFollow = true
+    LaunchedEffect(autoFollow, currentLocation?.latitude, currentLocation?.longitude) {
+        if (!autoFollow) return@LaunchedEffect
+
         val map = mapLibreMap
         if (map != null && currentLocation != null) {
-            Log.d("BumpSense", " Авто-центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", "🔄 Авто-наведение: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)
@@ -84,28 +85,26 @@ fun MapLibreView(
                 CameraUpdateFactory.newCameraPosition(cameraPosition),
                 1000
             )
-        } else {
-            Log.d("BumpSense", "⏸️ Авто-центрирование пропущено: map=$map, location=$currentLocation")
         }
     }
 
     // Ручное центрирование по кнопке
     LaunchedEffect(centerTrigger) {
         if (centerTrigger > 0) {
-            Log.d("BumpSense", "👆 Кнопка центрирования нажата (trigger=$centerTrigger)")
+            Log.d("BumpSense", "👆 Ручное центрирование (trigger=$centerTrigger)")
 
             val map = mapLibreMap
             if (map == null) {
-                Log.e("BumpSense", "❌ Карта еще не инициализирована")
+                Log.e("BumpSense", " Карта не инициализирована")
                 return@LaunchedEffect
             }
 
             if (currentLocation == null) {
-                Log.e("BumpSense", " Местоположение еще не получено (GPS ищет...)")
+                Log.e("BumpSense", "❌ Местоположение не получено")
                 return@LaunchedEffect
             }
 
-            Log.d("BumpSense", "🎯 Ручное центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", " Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)

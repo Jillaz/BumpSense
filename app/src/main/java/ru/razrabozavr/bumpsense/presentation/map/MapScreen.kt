@@ -2,16 +2,20 @@ package ru.razrabozavr.bumpsense.presentation.map
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -26,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -56,13 +61,12 @@ fun MapScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     var centerTrigger by remember { mutableIntStateOf(0) }
+    var autoFollow by remember { mutableStateOf(false) }
 
-    // Отступы системных панелей (статус-бар и навигационная панель)
     val systemBarsPadding = WindowInsets.systemBars.asPaddingValues()
     val topPadding = systemBarsPadding.calculateTopPadding()
     val bottomPadding = systemBarsPadding.calculateBottomPadding()
 
-    // Показ Snackbar при появлении сообщения
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -70,7 +74,6 @@ fun MapScreen(
         }
     }
 
-    // Лаунчер для запроса разрешений
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -82,7 +85,6 @@ fun MapScreen(
         viewModel.updatePermissionState(allGranted)
     }
 
-    // Запрос разрешений при первом запуске
     LaunchedEffect(Unit) {
         permissionHandler.checkPermissions()
         if (!permissionHandler.permissionState.value.allPermissionsGranted) {
@@ -92,7 +94,6 @@ fun MapScreen(
         }
     }
 
-    // Лаунчер экспорта трека
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/geo+json")
     ) { uri ->
@@ -110,7 +111,6 @@ fun MapScreen(
         }
     }
 
-    // Лаунчер импорта трека
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -123,7 +123,6 @@ fun MapScreen(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // Верхняя панель с учетом отступа статус-бара
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -135,7 +134,6 @@ fun MapScreen(
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
 
-                // Меню справа вверху
                 AppMenu(
                     onExportClick = { viewModel.setShowExportDialog(true) },
                     onImportClick = {
@@ -147,7 +145,6 @@ fun MapScreen(
             }
         },
         bottomBar = {
-            // Нижняя панель с учетом отступа навигационной панели
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,20 +168,19 @@ fun MapScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Карта MapLibre
             MapLibreView(
                 modifier = Modifier.fillMaxSize(),
                 currentTrackPoints = uiState.currentTrackPoints,
                 historyTracks = if (uiState.isHistoryVisible) uiState.historyTracks else emptyList(),
                 currentLocation = uiState.currentLocation,
-                centerTrigger = centerTrigger
+                centerTrigger = centerTrigger,
+                autoFollow = autoFollow
             )
 
-            // Панель акселерометра — верхний левый угол
             AccelerometerPanel(
                 magnitude = accelData.magnitude,
                 bumpIndex = accelData.bumpIndex,
-                maxBumpIndex = accelData.maxBumpIndex,  // ✅ Передаем новое значение
+                maxBumpIndex = accelData.maxBumpIndex,
                 isAvailable = accelData.isAvailable,
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -195,26 +191,59 @@ fun MapScreen(
                     .width(120.dp)
             )
 
-            // Кнопка центрирования карты на текущем местоположении
-            FloatingActionButton(
-                onClick = {
-                    centerTrigger++
-                },
+            // Две независимые FAB-кнопки
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(
                         end = 16.dp,
                         bottom = 16.dp + bottomPadding
-                    )
+                    ),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.MyLocation,
-                    contentDescription = "Мое местоположение"
-                )
+                // Кнопка авто-наведения
+                FloatingActionButton(
+                    onClick = {
+                        autoFollow = !autoFollow
+                        if (autoFollow) {
+                            centerTrigger++
+                        }
+                    },
+                    containerColor = if (autoFollow)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Navigation,  // ✅ Стрелка навигации (вместо GpsFixed/GpsNotFixed)
+                        contentDescription = if (autoFollow)
+                            "Авто-наведение включено"
+                        else
+                            "Авто-наведение выключено",
+                        tint = if (autoFollow)
+                            MaterialTheme.colorScheme.onPrimary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Кнопка разового центрирования
+                FloatingActionButton(
+                    onClick = {
+                        centerTrigger++
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Мое местоположение",
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
             }
         }
 
-        // Диалог экспорта трека
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
@@ -246,7 +275,6 @@ fun MapScreen(
             )
         }
 
-        // Диалог подтверждения очистки базы данных
         if (showClearDbDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowClearDbDialog(false) },

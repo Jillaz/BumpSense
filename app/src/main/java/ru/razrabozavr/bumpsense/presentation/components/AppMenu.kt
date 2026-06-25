@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 fun AppMenu(
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
-    onClearDbClick: () -> Unit,  // ✅ Добавлен параметр
+    onClearDbClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -61,7 +61,6 @@ fun AppMenu(
                 }
             )
 
-            // ✅ Пункт очистки БД с иконкой DeleteSweep
             DropdownMenuItem(
                 text = { Text("Очистить базу данных") },
                 onClick = {

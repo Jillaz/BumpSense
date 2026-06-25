@@ -17,7 +17,7 @@ import kotlinx.coroutines.launch
 data class AccelerometerData(
     val magnitude: Float = 0f,
     val bumpIndex: Int = 0,
-    val maxBumpIndex: Int = 0,  // ✅ Новое поле: максимальное значение
+    val maxBumpIndex: Int = 0,
     val isAvailable: Boolean = true
 )
 
@@ -29,7 +29,6 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
     private val _accelerometerData = MutableStateFlow(AccelerometerData())
     val accelerometerData: StateFlow<AccelerometerData> = _accelerometerData.asStateFlow()
 
-    // Состояние максимального значения
     private var maxBumpIndex = 0
     private var maxBumpIndexResetJob: Job? = null
 
@@ -58,19 +57,12 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
             .launchIn(viewModelScope)
     }
 
-    /**
-     * Обновляет максимальное значение индекса неровности.
-     * - Если новый индекс выше текущего максимума → обновляем и запускаем таймер 5 сек.
-     * - Если за 5 сек не было новых максимумов → сбрасываем на 0.
-     */
     private fun updateMaxBumpIndex(newBumpIndex: Int) {
         if (newBumpIndex > maxBumpIndex) {
             maxBumpIndex = newBumpIndex
 
-            // Отменяем предыдущий таймер сброса
             maxBumpIndexResetJob?.cancel()
 
-            // Запускаем новый таймер на 5 секунд
             maxBumpIndexResetJob = viewModelScope.launch {
                 delay(5000)
                 maxBumpIndex = 0

@@ -7,7 +7,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
-import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,15 +52,24 @@ fun ControlPanel(
                 )
             }
 
-            // Кнопка истории
+            // ✅ Кнопка отображения истории треков — иконка глаза
             IconButton(
                 onClick = onHistoryClick,
                 modifier = Modifier.size(56.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.History,
-                    contentDescription = if (isHistoryVisible) "Скрыть историю" else "Показать историю",
-                    tint = if (isHistoryVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    imageVector = if (isHistoryVisible)
+                        Icons.Default.Visibility      // 👁️ Глаз открыт — треки видны
+                    else
+                        Icons.Default.VisibilityOff,  // 👁️‍🗨️ Глаз закрыт — треки скрыты
+                    contentDescription = if (isHistoryVisible)
+                        "Скрыть историю треков"
+                    else
+                        "Показать историю треков",
+                    tint = if (isHistoryVisible)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(40.dp)
                 )
             }

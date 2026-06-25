@@ -48,14 +48,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val trackRepository = (application as BumpSenseApp).trackRepository
 
-    // GPS клиент для постоянного отслеживания местоположения
     private val locationClient = LocationClient(application)
     private var locationJob: Job? = null
 
     private val _showExportDialog = MutableStateFlow(false)
     val showExportDialog: StateFlow<Boolean> = _showExportDialog.asStateFlow()
 
-    // Состояние диалога очистки БД
     private val _showClearDbDialog = MutableStateFlow(false)
     val showClearDbDialog: StateFlow<Boolean> = _showClearDbDialog.asStateFlow()
 
@@ -95,20 +93,16 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     init {
         loadHistoryTracks()
         registerReceiver()
-        startGpsTracking()  // Запускаем GPS сразу при создании ViewModel
+        startGpsTracking()
     }
 
-    /**
-     * Запускает постоянное отслеживание GPS.
-     * Работает независимо от режима записи.
-     */
     private fun startGpsTracking() {
         if (locationJob?.isActive == true) {
-            Log.d("BumpSense", "⏸️ GPS уже работает")
+            Log.d("BumpSense", "️ GPS уже работает")
             return
         }
 
-        Log.d("BumpSense", "🚀 Запуск постоянного GPS-трекинга")
+        Log.d("BumpSense", " Запуск постоянного GPS-трекинга")
 
         locationJob = viewModelScope.launch {
             try {
@@ -165,7 +159,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update {
                 it.copy(
                     isRecording = true,
-                    currentTrackPoints = emptyList()  // Очищаем текущий трек
+                    currentTrackPoints = emptyList()
                 )
             }
         }
@@ -188,14 +182,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     fun updatePermissionState(granted: Boolean) {
         _uiState.update { it.copy(locationPermissionGranted = granted) }
         if (granted) {
-            // Если разрешение получено - запускаем GPS
             startGpsTracking()
         } else {
             _uiState.update { it.copy(gpsStatus = GpsStatus.UNAVAILABLE) }
         }
     }
-
-    // ===== ЭКСПОРТ / ИМПОРТ =====
 
     fun setShowExportDialog(show: Boolean) {
         _showExportDialog.value = show
@@ -228,7 +219,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     val track = GeoJsonMapper.geoJsonToTrack(jsonString)
                     if (track != null) {
                         trackRepository.insertTrack(track)
-                        _uiState.update { it.copy(snackbarMessage = "Трек успешно импортирован") }
+                        _uiState.update {
+                            it.copy(snackbarMessage = "Трек импортирован: ${track.points.size} точек")
+                        }
                     } else {
                         _uiState.update { it.copy(snackbarMessage = "Неверный формат файла") }
                     }
@@ -239,8 +232,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
 
     fun setShowClearDbDialog(show: Boolean) {
         _showClearDbDialog.value = show
@@ -273,7 +264,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        // Останавливаем GPS только когда ViewModel уничтожается
         locationJob?.cancel()
         try {
             getApplication<Application>().unregisterReceiver(trackPointReceiver)
