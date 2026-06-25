@@ -14,6 +14,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.location.LocationComponentActivationOptions
 import org.maplibre.android.location.modes.CameraMode
 import org.maplibre.android.location.modes.RenderMode
@@ -40,6 +41,7 @@ fun MapLibreView(
     currentLocation: Location? = null,
     centerTrigger: Int = 0,
     autoFollow: Boolean = false,
+    cameraBounds: CameraBounds? = null,  // ✅ Новый параметр
     onMapReady: (MapLibreMap) -> Unit = {}
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
@@ -95,7 +97,7 @@ fun MapLibreView(
 
             val map = mapLibreMap
             if (map == null) {
-                Log.e("BumpSense", " Карта не инициализирована")
+                Log.e("BumpSense", "❌ Карта не инициализирована")
                 return@LaunchedEffect
             }
 
@@ -104,7 +106,7 @@ fun MapLibreView(
                 return@LaunchedEffect
             }
 
-            Log.d("BumpSense", " Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", "🎯 Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)
@@ -113,6 +115,28 @@ fun MapLibreView(
                 CameraUpdateFactory.newCameraPosition(cameraPosition),
                 1000
             )
+        }
+    }
+
+    // ✅ Центрирование на области трека
+    LaunchedEffect(cameraBounds) {
+        val bounds = cameraBounds ?: return@LaunchedEffect
+        val map = mapLibreMap ?: return@LaunchedEffect
+
+        Log.d("BumpSense", "🎯 Центрирование на bounds: $bounds")
+
+        try {
+            val latLngBounds = LatLngBounds.Builder()
+                .include(LatLng(bounds.minLat, bounds.minLon))
+                .include(LatLng(bounds.maxLat, bounds.maxLon))
+                .build()
+
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngBounds(latLngBounds, 50),
+                1000
+            )
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка центрирования на bounds", e)
         }
     }
 }

@@ -23,6 +23,7 @@ import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.mapper.GeoJsonMapper
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
+import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.service.RecordingService
 
 data class MapUiState(
@@ -42,6 +43,13 @@ enum class GpsStatus {
     UNAVAILABLE
 }
 
+data class CameraBounds(
+    val minLat: Double,
+    val maxLat: Double,
+    val minLon: Double,
+    val maxLon: Double
+)
+
 class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(MapUiState())
@@ -49,9 +57,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private val trackRepository = (application as BumpSenseApp).trackRepository
 
+    // GPS клиент для постоянного отслеживания местоположения
     private val locationClient = LocationClient(application)
     private var locationJob: Job? = null
 
+    // Диалоги
     private val _showExportDialog = MutableStateFlow(false)
     val showExportDialog: StateFlow<Boolean> = _showExportDialog.asStateFlow()
 
@@ -60,6 +70,19 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     // URI для отложенного экспорта (если запись ещё идёт)
     private var pendingExportUri: Uri? = null
+
+    // ===== РЕЖИМ РЕДАКТИРОВАНИЯ ТРЕКОВ =====
+
+    private val _trackEditState = MutableStateFlow(TrackEditUiState())
+    val trackEditState: StateFlow<TrackEditUiState> = _trackEditState.asStateFlow()
+
+    private val _isEditMode = MutableStateFlow(false)
+    val isEditMode: StateFlow<Boolean> = _isEditMode.asStateFlow()
+
+    private val _cameraBounds = MutableStateFlow<CameraBounds?>(null)
+    val cameraBounds: StateFlow<CameraBounds?> = _cameraBounds.asStateFlow()
+
+    // ===== BROADCAST RECEIVER =====
 
     private val trackPointReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -103,11 +126,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ===== ИНИЦИАЛИЗАЦИЯ =====
+
     init {
         loadHistoryTracks()
         registerReceiver()
         startGpsTracking()
     }
+
+    // ===== GPS ТРЕКИНГ =====
 
     private fun startGpsTracking() {
         if (locationJob?.isActive == true) {
@@ -157,15 +184,22 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(historyTracks = tracks.map { track -> track.points })
                 }
+                // Обновляем список в режиме редактирования, если он активен
+                _trackEditState.update {
+                    it.copy(tracks = tracks)
+                }
             }
         }
     }
+
+    // ===== УПРАВЛЕНИЕ ЗАПИСЬЮ =====
 
     fun toggleRecording() {
         val context = getApplication<Application>()
         if (_uiState.value.isRecording) {
             Log.d("BumpSense", "⏹️ Остановка записи (GPS продолжает работать)")
             RecordingService.stopRecording(context)
+            // Сразу меняем состояние, не ждём broadcast
             _uiState.update { it.copy(isRecording = false) }
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
@@ -193,6 +227,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(currentTrackPoints = emptyList()) }
     }
 
+    // ===== РАЗРЕШЕНИЯ =====
+
     fun updatePermissionState(granted: Boolean) {
         _uiState.update { it.copy(locationPermissionGranted = granted) }
         if (granted) {
@@ -202,10 +238,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ===== ЭКСПОРТ / ИМПОРТ =====
+
     fun setShowExportDialog(show: Boolean) {
         _showExportDialog.value = show
     }
 
+    /**
+     * Экспортирует все треки из базы в GeoJSON файл.
+     * Если в момент вызова идёт запись — сначала останавливает её,
+     * сохраняет текущий трек, и только потом делает экспорт.
+     */
     fun exportAllTracks(uri: Uri) {
         if (_uiState.value.isRecording) {
             pendingExportUri = uri
@@ -270,12 +313,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // Парсим треки
                 val tracks = GeoJsonMapper.geoJsonToTracks(jsonString)
                 Log.d("BumpSense", "📥 Распаршено треков: ${tracks.size}")
 
                 if (tracks.isNotEmpty()) {
-                    // ✅ Очищаем базу перед импортом
+                    // Очищаем базу перед импортом
                     Log.d("BumpSense", "🗑️ Очистка базы перед импортом")
                     trackRepository.clearDatabase()
 
@@ -288,9 +330,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     _uiState.update {
-                        it.copy(
-                            snackbarMessage = "Импортировано треков: ${tracks.size}, точек: $totalPoints"
-                        )
+                        it.copy(snackbarMessage = "Импортировано треков: ${tracks.size}, точек: $totalPoints")
                     }
                     Log.d("BumpSense", "✅ Импортировано треков: ${tracks.size}, точек: $totalPoints")
                 } else {
@@ -304,6 +344,199 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    /**
+     * Добавляет треки из GeoJSON файла в существующую базу.
+     * НЕ очищает базу перед импортом.
+     * Проверяет дубликаты по startTime (если трек с таким же временем уже есть — пропускаем).
+     */
+    fun appendTracks(uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    _uiState.update { it.copy(snackbarMessage = "Не удалось открыть файл") }
+                    return@launch
+                }
+
+                val jsonString = inputStream.bufferedReader().use { it.readText() }
+                inputStream.close()
+
+                Log.d("BumpSense", "📥 Размер файла: ${jsonString.length} символов")
+
+                if (jsonString.isEmpty()) {
+                    _uiState.update { it.copy(snackbarMessage = "Файл пустой") }
+                    return@launch
+                }
+
+                val tracks = GeoJsonMapper.geoJsonToTracks(jsonString)
+                Log.d("BumpSense", " Распаршено треков: ${tracks.size}")
+
+                if (tracks.isNotEmpty()) {
+                    // Получаем существующие треки для проверки дубликатов
+                    val existingTracks = trackRepository.getAllTracks().first()
+                    val existingStartTimes = existingTracks.map { it.startTime }.toSet()
+
+                    var addedCount = 0
+                    var skippedCount = 0
+                    var totalPoints = 0
+
+                    tracks.forEach { track ->
+                        // Проверяем дубликат по startTime
+                        if (track.startTime in existingStartTimes) {
+                            skippedCount++
+                            Log.d("BumpSense", "⏭️ Пропущен дубликат трека '${track.name}' (startTime=${track.startTime})")
+                        } else {
+                            trackRepository.insertTrack(track)
+                            addedCount++
+                            totalPoints += track.points.size
+                            Log.d("BumpSense", "✅ Добавлен трек '${track.name}': ${track.points.size} точек")
+                        }
+                    }
+
+                    val message = "Добавлено треков: $addedCount, точек: $totalPoints" +
+                            if (skippedCount > 0) " (пропущено дубликатов: $skippedCount)" else ""
+
+                    _uiState.update { it.copy(snackbarMessage = message) }
+                    Log.d("BumpSense", "✅ $message")
+                } else {
+                    _uiState.update { it.copy(snackbarMessage = "Неверный формат файла или нет треков") }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Log.e("BumpSense", "❌ Ошибка добавления треков: ${e.message}", e)
+                _uiState.update { it.copy(snackbarMessage = "Ошибка при добавлении треков: ${e.message}") }
+            }
+        }
+    }
+
+    // ===== РЕДАКТИРОВАНИЕ ТРЕКОВ =====
+
+    /**
+     * Вход в режим редактирования треков
+     */
+    fun enterEditMode() {
+        _isEditMode.value = true
+        viewModelScope.launch {
+            val allTracks = trackRepository.getAllTracks().first()
+            _trackEditState.update {
+                it.copy(
+                    tracks = allTracks,
+                    focusedTrackId = null
+                )
+            }
+        }
+    }
+
+    /**
+     * Выход из режима редактирования
+     */
+    fun exitEditMode() {
+        _isEditMode.value = false
+        _trackEditState.update { it.copy(focusedTrackId = null) }
+        _cameraBounds.value = null
+
+        // ✅ Загружаем все треки из базы и показываем их
+        viewModelScope.launch {
+            val allTracks = trackRepository.getAllTracks().first()
+            _uiState.update {
+                it.copy(
+                    isHistoryVisible = true,
+                    historyTracks = allTracks.map { track -> track.points },
+                    currentTrackPoints = emptyList()
+                )
+            }
+            Log.d("BumpSense", "📋 Выход из режима редактирования, загружено треков: ${allTracks.size}")
+        }
+    }
+
+    /**
+     * Сфокусироваться на треке: показать только его и центрировать камеру на его области
+     */
+    fun focusOnTrack(trackId: Long) {
+        viewModelScope.launch {
+            val track = trackRepository.getTrackById(trackId)
+            if (track != null && track.points.isNotEmpty()) {
+                _trackEditState.update { it.copy(focusedTrackId = trackId) }
+
+                // Вычисляем bounds трека
+                val bounds = calculateTrackBounds(track.points)
+                _cameraBounds.value = bounds
+
+                // Показываем только выбранный трек
+                _uiState.update {
+                    it.copy(
+                        isHistoryVisible = true,
+                        currentTrackPoints = track.points,
+                        historyTracks = listOf(track.points)
+                    )
+                }
+
+                Log.d("BumpSense", "🎯 Фокус на треке #$trackId: bounds=$bounds")
+            }
+        }
+    }
+
+    /**
+     * Удалить трек
+     */
+    fun deleteTrack(track: Track) {
+        viewModelScope.launch {
+            trackRepository.deleteTrack(track.id)
+            // Обновляем список
+            val updatedTracks = _trackEditState.value.tracks.filter { it.id != track.id }
+            _trackEditState.update { it.copy(tracks = updatedTracks) }
+
+            // Если удалённый трек был в фокусе — сбрасываем фокус
+            if (_trackEditState.value.focusedTrackId == track.id) {
+                _trackEditState.update { it.copy(focusedTrackId = null) }
+                _cameraBounds.value = null
+            }
+
+            _uiState.update { it.copy(snackbarMessage = "Трек удален") }
+        }
+    }
+
+    /**
+     * Сбросить фокус (показать все треки)
+     */
+    fun clearTrackFocus() {
+        _trackEditState.update { it.copy(focusedTrackId = null) }
+        _cameraBounds.value = null
+        _uiState.update { it.copy(isHistoryVisible = true) }
+    }
+
+    /**
+     * Вычисляет bounding box для списка точек трека
+     */
+    private fun calculateTrackBounds(points: List<TrackPoint>): CameraBounds {
+        var minLat = Double.MAX_VALUE
+        var maxLat = -Double.MAX_VALUE
+        var minLon = Double.MAX_VALUE
+        var maxLon = -Double.MAX_VALUE
+
+        points.forEach { point ->
+            if (point.latitude < minLat) minLat = point.latitude
+            if (point.latitude > maxLat) maxLat = point.latitude
+            if (point.longitude < minLon) minLon = point.longitude
+            if (point.longitude > maxLon) maxLon = point.longitude
+        }
+
+        // Добавляем небольшой отступ (10%)
+        val latPadding = (maxLat - minLat) * 0.1
+        val lonPadding = (maxLon - minLon) * 0.1
+
+        return CameraBounds(
+            minLat = minLat - latPadding,
+            maxLat = maxLat + latPadding,
+            minLon = minLon - lonPadding,
+            maxLon = maxLon + lonPadding
+        )
+    }
+
+    // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
 
     fun setShowClearDbDialog(show: Boolean) {
         _showClearDbDialog.value = show
@@ -320,6 +553,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         snackbarMessage = "База данных полностью очищена"
                     )
                 }
+                // Обновляем список в режиме редактирования
+                _trackEditState.update { it.copy(tracks = emptyList()) }
                 Log.d("BumpSense", "🗑️ База данных очищена")
             } catch (e: Exception) {
                 Log.e("BumpSense", "❌ Ошибка при очистке БД", e)
@@ -330,9 +565,13 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // ===== SNACKBAR =====
+
     fun clearSnackbarMessage() {
         _uiState.update { it.copy(snackbarMessage = null) }
     }
+
+    // ===== ЖИЗНЕННЫЙ ЦИКЛ =====
 
     override fun onCleared() {
         super.onCleared()

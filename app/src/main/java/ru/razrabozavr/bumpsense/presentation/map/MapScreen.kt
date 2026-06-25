@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -44,6 +43,7 @@ import ru.razrabozavr.bumpsense.presentation.components.AppMenu
 import ru.razrabozavr.bumpsense.presentation.components.ControlPanel
 import ru.razrabozavr.bumpsense.presentation.components.TopStatusBar
 import ru.razrabozavr.bumpsense.presentation.permissions.PermissionHandler
+import ru.razrabozavr.bumpsense.presentation.track.TrackEditScreen
 
 @Composable
 fun MapScreen(
@@ -56,6 +56,12 @@ fun MapScreen(
     val accelData by accelerometerViewModel.accelerometerData.collectAsState()
     val showExportDialog by viewModel.showExportDialog.collectAsState()
     val showClearDbDialog by viewModel.showClearDbDialog.collectAsState()
+
+    // Состояния для режима редактирования
+    val trackEditState by viewModel.trackEditState.collectAsState()
+    val isEditMode by viewModel.isEditMode.collectAsState()
+    val cameraBounds by viewModel.cameraBounds.collectAsState()
+
     val context = LocalContext.current
     val permissionHandler = remember { PermissionHandler(context) }
 
@@ -67,6 +73,7 @@ fun MapScreen(
     val topPadding = systemBarsPadding.calculateTopPadding()
     val bottomPadding = systemBarsPadding.calculateBottomPadding()
 
+    // Показ Snackbar
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
@@ -74,6 +81,7 @@ fun MapScreen(
         }
     }
 
+    // Лаунчер разрешений
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -94,20 +102,30 @@ fun MapScreen(
         }
     }
 
+    // Лаунчер экспорта
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/geo+json")
     ) { uri ->
         if (uri != null) {
-            // ✅ Экспортируем все треки (запись остановится автоматически, если идёт)
             viewModel.exportAllTracks(uri)
         }
     }
 
+    // Лаунчер импорта
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             viewModel.importTracks(uri)
+        }
+    }
+
+    // Лаунчер добавления треков (без очистки базы)
+    val appendTracksLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.appendTracks(uri)
         }
     }
 
@@ -131,27 +149,34 @@ fun MapScreen(
                     onImportClick = {
                         importLauncher.launch(arrayOf("application/json", "*/*"))
                     },
+                    onAppendTracksClick = {
+                        appendTracksLauncher.launch(arrayOf("application/json", "*/*"))
+                    },
                     onClearDbClick = { viewModel.setShowClearDbDialog(true) },
+                    onEditTracksClick = { viewModel.enterEditMode() },
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
         },
         bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = bottomPadding)
-            ) {
-                ControlPanel(
-                    isRecording = uiState.isRecording,
-                    isHistoryVisible = uiState.isHistoryVisible,
-                    onRecordClick = {
-                        if (uiState.locationPermissionGranted) {
-                            viewModel.toggleRecording()
-                        }
-                    },
-                    onHistoryClick = { viewModel.toggleHistoryVisibility() }
-                )
+            // Скрываем панель управления в режиме редактирования
+            if (!isEditMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = bottomPadding)
+                ) {
+                    ControlPanel(
+                        isRecording = uiState.isRecording,
+                        isHistoryVisible = uiState.isHistoryVisible,
+                        onRecordClick = {
+                            if (uiState.locationPermissionGranted) {
+                                viewModel.toggleRecording()
+                            }
+                        },
+                        onHistoryClick = { viewModel.toggleHistoryVisibility() }
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -160,15 +185,18 @@ fun MapScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Карта (всегда видна)
             MapLibreView(
                 modifier = Modifier.fillMaxSize(),
                 currentTrackPoints = uiState.currentTrackPoints,
                 historyTracks = if (uiState.isHistoryVisible) uiState.historyTracks else emptyList(),
                 currentLocation = uiState.currentLocation,
                 centerTrigger = centerTrigger,
-                autoFollow = autoFollow
+                autoFollow = autoFollow,
+                cameraBounds = cameraBounds
             )
 
+            // Панель акселерометра
             AccelerometerPanel(
                 magnitude = accelData.magnitude,
                 bumpIndex = accelData.bumpIndex,
@@ -183,13 +211,13 @@ fun MapScreen(
                     .width(120.dp)
             )
 
-            // Две независимые FAB-кнопки
+            // FAB кнопки (поднимаем выше, если открыт режим редактирования)
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(
                         end = 16.dp,
-                        bottom = 16.dp + bottomPadding
+                        bottom = if (isEditMode) 260.dp else 16.dp + bottomPadding
                     ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -207,7 +235,7 @@ fun MapScreen(
                         MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Navigation,  // ✅ Стрелка навигации (вместо GpsFixed/GpsNotFixed)
+                        imageVector = Icons.Default.Navigation,
                         contentDescription = if (autoFollow)
                             "Авто-наведение включено"
                         else
@@ -215,16 +243,13 @@ fun MapScreen(
                         tint = if (autoFollow)
                             MaterialTheme.colorScheme.onPrimary
                         else
-                            MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(24.dp)
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 // Кнопка разового центрирования
                 FloatingActionButton(
-                    onClick = {
-                        centerTrigger++
-                    },
+                    onClick = { centerTrigger++ },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer
                 ) {
                     Icon(
@@ -234,8 +259,22 @@ fun MapScreen(
                     )
                 }
             }
+
+            // ✅ Список треков внизу экрана (30% высоты)
+            if (isEditMode) {
+                TrackEditScreen(
+                    uiState = trackEditState,
+                    onBackClick = { viewModel.exitEditMode() },
+                    onTrackClick = { trackId -> viewModel.focusOnTrack(trackId) },
+                    onDeleteClick = { track -> viewModel.deleteTrack(track) },
+                    onDeleteConfirm = { },
+                    onDeleteCancel = { },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
 
+        // Диалог экспорта
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
@@ -274,6 +313,7 @@ fun MapScreen(
             )
         }
 
+        // Диалог очистки БД
         if (showClearDbDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowClearDbDialog(false) },

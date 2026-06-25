@@ -2,7 +2,9 @@ package ru.razrabozavr.bumpsense.presentation.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Menu
@@ -17,12 +19,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import ru.razrabozavr.bumpsense.R
+import androidx.compose.ui.res.stringResource
 
 @Composable
 fun AppMenu(
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
+    onAppendTracksClick: () -> Unit,
     onClearDbClick: () -> Unit,
+    onEditTracksClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -31,7 +38,7 @@ fun AppMenu(
         IconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.Default.Menu,
-                contentDescription = "Меню"
+                contentDescription = stringResource(R.string.menu_content_description)
             )
         }
 
@@ -40,7 +47,7 @@ fun AppMenu(
             onDismissRequest = { expanded = false }
         ) {
             DropdownMenuItem(
-                text = { Text("Экспорт трека") },
+                text = { Text(stringResource(R.string.menu_export)) },
                 onClick = {
                     expanded = false
                     onExportClick()
@@ -51,7 +58,7 @@ fun AppMenu(
             )
 
             DropdownMenuItem(
-                text = { Text("Импорт трека") },
+                text = { Text(stringResource(R.string.menu_import)) },
                 onClick = {
                     expanded = false
                     onImportClick()
@@ -62,7 +69,29 @@ fun AppMenu(
             )
 
             DropdownMenuItem(
-                text = { Text("Очистить базу данных") },
+                text = { Text(stringResource(R.string.menu_append)) },
+                onClick = {
+                    expanded = false
+                    onAppendTracksClick()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.AddCircle, contentDescription = null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_edit)) },
+                onClick = {
+                    expanded = false
+                    onEditTracksClick()
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                }
+            )
+
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.menu_clear)) },
                 onClick = {
                     expanded = false
                     onClearDbClick()

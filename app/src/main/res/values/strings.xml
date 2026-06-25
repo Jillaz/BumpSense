@@ -46,4 +46,12 @@
     <string name="no_tracks_available">Нет сохраненных треков</string>
     <string name="export_last_track">Будет экспортирован последний записанный трек.</string>
     <string name="export_action">Экспортировать</string>
+
+    <!-- Меню -->
+    <string name="menu_content_description">Меню</string>
+    <string name="menu_export">Экспорт базы</string>
+    <string name="menu_import">Импорт базы</string>
+    <string name="menu_append">Добавить треки</string>
+    <string name="menu_edit">Редактировать треки</string>
+    <string name="menu_clear">Очистить базу данных</string>
 </resources>
