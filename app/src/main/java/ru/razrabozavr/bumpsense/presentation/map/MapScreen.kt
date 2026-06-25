@@ -37,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
-import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.presentation.components.AccelerometerPanel
 import ru.razrabozavr.bumpsense.presentation.components.AppMenu
 import ru.razrabozavr.bumpsense.presentation.components.ControlPanel

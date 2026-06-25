@@ -21,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import ru.razrabozavr.bumpsense.R
-import androidx.compose.ui.res.stringResource
 
 @Composable
 fun AppMenu(

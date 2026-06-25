@@ -1,7 +1,6 @@
 package ru.razrabozavr.bumpsense.data.local.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
@@ -26,8 +25,7 @@ interface TrackDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrack(track: TrackEntity): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrackPoint(point: TrackPointEntity): Long
+
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrackPoints(points: List<TrackPointEntity>)
@@ -35,8 +33,6 @@ interface TrackDao {
     @Update
     suspend fun updateTrack(track: TrackEntity)
 
-    @Delete
-    suspend fun deleteTrack(track: TrackEntity)
 
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Long)
@@ -45,9 +41,6 @@ interface TrackDao {
 
     @Query("DELETE FROM track_points WHERE trackId = :trackId")
     suspend fun deletePointsByTrackId(trackId: Long)
-
-    @Query("SELECT * FROM track_points WHERE latitude = :lat AND longitude = :lon AND trackId = :trackId")
-    suspend fun getPointByCoords(lat: Double, lon: Double, trackId: Long): TrackPointEntity?
 
     @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
     suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)

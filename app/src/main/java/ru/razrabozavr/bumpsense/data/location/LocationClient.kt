@@ -53,7 +53,7 @@ class LocationClient(private val context: Context) {
                 null
             )
             task.await()  // Теперь этот метод доступен
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }

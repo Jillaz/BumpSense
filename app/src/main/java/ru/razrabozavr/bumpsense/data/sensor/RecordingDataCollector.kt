@@ -1,13 +1,11 @@
 package ru.razrabozavr.bumpsense.data.sensor
 
-import android.location.Location
 import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
-import kotlin.math.sqrt
 
 /**
  * Собирает данные из GPS и акселерометра.
@@ -24,10 +22,6 @@ class RecordingDataCollector(
 
     fun setTrackId(trackId: Long) {
         lastTrackId = trackId
-    }
-
-    fun reset() {
-        bumpIndexCalculator.reset()
     }
 
     /**

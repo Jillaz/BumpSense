@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 data class AccelerometerData(
     val magnitude: Float = 0f,
@@ -51,7 +52,7 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
                     )
                 }
             }
-            .catch { e ->
+            .catch { _ ->
                 _accelerometerData.update { AccelerometerData(isAvailable = false) }
             }
             .launchIn(viewModelScope)
@@ -64,7 +65,7 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
             maxBumpIndexResetJob?.cancel()
 
             maxBumpIndexResetJob = viewModelScope.launch {
-                delay(5000)
+                delay(5000.milliseconds)
                 maxBumpIndex = 0
                 _accelerometerData.update { it.copy(maxBumpIndex = 0) }
             }
