@@ -1,6 +1,8 @@
 package ru.razrabozavr.bumpsense.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
 import ru.razrabozavr.bumpsense.data.local.mapper.toDomain
@@ -65,7 +67,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         bumpIndex: Int,
         radiusMeters: Double
     ) {
-        // Bounding box для быстрой фильтрации
         val latDelta = radiusMeters / 111_000.0
         val lonDelta = radiusMeters / (111_000.0 * cos(Math.toRadians(latitude)))
 
@@ -74,10 +75,8 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         val minLon = longitude - lonDelta
         val maxLon = longitude + lonDelta
 
-        // SQL: быстрая фильтрация кандидатов
         val candidates = trackDao.getPointsInBoundingBox(minLat, maxLat, minLon, maxLon)
 
-        // Kotlin: точный расчет расстояния только для кандидатов
         candidates.forEach { pointEntity ->
             val distance = calculateDistance(
                 pointEntity.latitude, pointEntity.longitude,

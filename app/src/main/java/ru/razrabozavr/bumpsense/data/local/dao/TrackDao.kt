@@ -14,15 +14,23 @@ import ru.razrabozavr.bumpsense.data.local.entity.TrackPointEntity
 @Dao
 interface TrackDao {
 
-    // ===== ТРЕКИ =====
-    @Query("SELECT * FROM tracks ORDER BY startTime DESC")
+    @Query("SELECT * FROM tracks ORDER BY id DESC")
     fun getAllTracks(): Flow<List<TrackEntity>>
 
     @Query("SELECT * FROM tracks WHERE id = :id")
     suspend fun getTrackById(id: Long): TrackEntity?
 
+    @Query("SELECT * FROM track_points WHERE trackId = :trackId ORDER BY timestamp ASC")
+    suspend fun getTrackPoints(trackId: Long): List<TrackPointEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrack(track: TrackEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrackPoint(point: TrackPointEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrackPoints(points: List<TrackPointEntity>)
 
     @Update
     suspend fun updateTrack(track: TrackEntity)
@@ -33,20 +41,19 @@ interface TrackDao {
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Long)
 
-    // ===== ТОЧКИ ТРЕКА =====
-    @Query("SELECT * FROM track_points WHERE trackId = :trackId ORDER BY timestamp ASC")
-    suspend fun getTrackPoints(trackId: Long): List<TrackPointEntity>
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrackPoint(point: TrackPointEntity): Long
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertTrackPoints(points: List<TrackPointEntity>)
+    // ===== МЕТОДЫ ДЛЯ УПРАВЛЕНИЯ ТОЧКАМИ =====
 
     @Query("DELETE FROM track_points WHERE trackId = :trackId")
     suspend fun deletePointsByTrackId(trackId: Long)
 
-    // ===== ОПТИМИЗИРОВАННЫЕ МЕТОДЫ ДЛЯ ОБНОВЛЕНИЯ БЛИЖАЙШИХ ТОЧЕК =====
+    @Query("SELECT * FROM track_points WHERE latitude = :lat AND longitude = :lon AND trackId = :trackId")
+    suspend fun getPointByCoords(lat: Double, lon: Double, trackId: Long): TrackPointEntity?
+
+    @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
+    suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)
+
+    // ===== МЕТОДЫ ДЛЯ ОБНОВЛЕНИЯ БЛИЖАЙШИХ ТОЧЕК =====
+
     @Query("""
         SELECT * FROM track_points 
         WHERE latitude BETWEEN :minLat AND :maxLat
@@ -57,17 +64,14 @@ interface TrackDao {
         minLon: Double, maxLon: Double
     ): List<TrackPointEntity>
 
-    @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
-    suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)
-
     // ===== ОЧИСТКА БАЗЫ ДАННЫХ =====
+
     @Query("DELETE FROM track_points")
     suspend fun deleteAllTrackPoints()
 
     @Query("DELETE FROM tracks")
     suspend fun deleteAllTracks()
 
-    // ===== ТРАНЗАКЦИИ =====
     @Transaction
     suspend fun insertTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>): Long {
         val trackId = insertTrack(track)

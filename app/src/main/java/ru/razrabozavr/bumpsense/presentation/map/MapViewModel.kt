@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
@@ -57,6 +58,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     private val _showClearDbDialog = MutableStateFlow(false)
     val showClearDbDialog: StateFlow<Boolean> = _showClearDbDialog.asStateFlow()
 
+    // URI для отложенного экспорта (если запись ещё идёт)
+    private var pendingExportUri: Uri? = null
+
     private val trackPointReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -79,11 +83,20 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 RecordingService.ACTION_RECORDING_STOPPED -> {
                     Log.d("BumpSense", "⏹️ Запись остановлена (GPS продолжает работать)")
-                    _uiState.update {
-                        it.copy(
-                            isRecording = false,
-                            snackbarMessage = "Запись маршрута завершена"
-                        )
+
+                    // ✅ ВСЕГДА обновляем состояние записи
+                    _uiState.update { it.copy(isRecording = false) }
+
+                    // Если был запрошен экспорт во время записи — выполняем его
+                    val pendingUri = pendingExportUri
+                    if (pendingUri != null) {
+                        pendingExportUri = null
+                        Log.d("BumpSense", "📤 Выполняем отложенный экспорт")
+                        doExportAllTracks(pendingUri)
+                    } else {
+                        _uiState.update {
+                            it.copy(snackbarMessage = "Запись маршрута завершена")
+                        }
                     }
                 }
             }
@@ -98,11 +111,11 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startGpsTracking() {
         if (locationJob?.isActive == true) {
-            Log.d("BumpSense", "️ GPS уже работает")
+            Log.d("BumpSense", "⏸️ GPS уже работает")
             return
         }
 
-        Log.d("BumpSense", " Запуск постоянного GPS-трекинга")
+        Log.d("BumpSense", "🚀 Запуск постоянного GPS-трекинга")
 
         locationJob = viewModelScope.launch {
             try {
@@ -153,6 +166,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isRecording) {
             Log.d("BumpSense", "⏹️ Остановка записи (GPS продолжает работать)")
             RecordingService.stopRecording(context)
+            _uiState.update { it.copy(isRecording = false) }
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
             RecordingService.startRecording(context)
@@ -192,43 +206,101 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         _showExportDialog.value = show
     }
 
-    fun exportTrack(track: Track, uri: Uri) {
+    fun exportAllTracks(uri: Uri) {
+        if (_uiState.value.isRecording) {
+            pendingExportUri = uri
+            Log.d("BumpSense", "⏸️ Запись идёт, останавливаем перед экспортом")
+            RecordingService.stopRecording(getApplication())
+        } else {
+            doExportAllTracks(uri)
+        }
+    }
+
+    private fun doExportAllTracks(uri: Uri) {
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
-                val jsonString = GeoJsonMapper.trackToGeoJson(track)
+                val allTracks = trackRepository.getAllTracks().first()
+
+                if (allTracks.isEmpty()) {
+                    _uiState.update { it.copy(snackbarMessage = "Нет треков для экспорта") }
+                    return@launch
+                }
+
+                val jsonString = GeoJsonMapper.tracksToGeoJson(allTracks)
 
                 context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                     outputStream.write(jsonString.toByteArray())
                 }
-                _uiState.update { it.copy(snackbarMessage = "Трек успешно экспортирован") }
+
+                val totalPoints = allTracks.sumOf { it.points.size }
+                _uiState.update {
+                    it.copy(snackbarMessage = "Экспортировано треков: ${allTracks.size}, точек: $totalPoints")
+                }
+                Log.d("BumpSense", "✅ Экспортировано треков: ${allTracks.size}, точек: $totalPoints")
             } catch (e: Exception) {
                 e.printStackTrace()
-                _uiState.update { it.copy(snackbarMessage = "Ошибка при экспорте трека") }
+                _uiState.update { it.copy(snackbarMessage = "Ошибка при экспорте: ${e.message}") }
             }
         }
     }
 
-    fun importTrack(uri: Uri) {
+    /**
+     * Импортирует все треки из GeoJSON файла.
+     * Перед импортом база полностью очищается.
+     */
+    fun importTracks(uri: Uri) {
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
-                val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
 
-                if (jsonString != null) {
-                    val track = GeoJsonMapper.geoJsonToTrack(jsonString)
-                    if (track != null) {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    _uiState.update { it.copy(snackbarMessage = "Не удалось открыть файл") }
+                    return@launch
+                }
+
+                val jsonString = inputStream.bufferedReader().use { it.readText() }
+                inputStream.close()
+
+                Log.d("BumpSense", "📥 Размер файла: ${jsonString.length} символов")
+
+                if (jsonString.isEmpty()) {
+                    _uiState.update { it.copy(snackbarMessage = "Файл пустой") }
+                    return@launch
+                }
+
+                // Парсим треки
+                val tracks = GeoJsonMapper.geoJsonToTracks(jsonString)
+                Log.d("BumpSense", "📥 Распаршено треков: ${tracks.size}")
+
+                if (tracks.isNotEmpty()) {
+                    // ✅ Очищаем базу перед импортом
+                    Log.d("BumpSense", "🗑️ Очистка базы перед импортом")
+                    trackRepository.clearDatabase()
+
+                    // Импортируем все треки без проверок
+                    var totalPoints = 0
+                    tracks.forEach { track ->
                         trackRepository.insertTrack(track)
-                        _uiState.update {
-                            it.copy(snackbarMessage = "Трек импортирован: ${track.points.size} точек")
-                        }
-                    } else {
-                        _uiState.update { it.copy(snackbarMessage = "Неверный формат файла") }
+                        totalPoints += track.points.size
+                        Log.d("BumpSense", "📥 Трек '${track.name}': ${track.points.size} точек")
                     }
+
+                    _uiState.update {
+                        it.copy(
+                            snackbarMessage = "Импортировано треков: ${tracks.size}, точек: $totalPoints"
+                        )
+                    }
+                    Log.d("BumpSense", "✅ Импортировано треков: ${tracks.size}, точек: $totalPoints")
+                } else {
+                    _uiState.update { it.copy(snackbarMessage = "Неверный формат файла или нет треков") }
+                    Log.e("BumpSense", "❌ geoJsonToTracks вернул пустой список")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                _uiState.update { it.copy(snackbarMessage = "Ошибка при импорте трека") }
+                Log.e("BumpSense", "❌ Ошибка импорта: ${e.message}", e)
+                _uiState.update { it.copy(snackbarMessage = "Ошибка при импорте: ${e.message}") }
             }
         }
     }

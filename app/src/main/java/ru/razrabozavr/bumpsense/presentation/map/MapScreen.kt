@@ -98,16 +98,8 @@ fun MapScreen(
         contract = ActivityResultContracts.CreateDocument("application/geo+json")
     ) { uri ->
         if (uri != null) {
-            val trackToExport = uiState.historyTracks.lastOrNull()?.let { points ->
-                Track(
-                    name = "Exported_Track",
-                    startTime = System.currentTimeMillis(),
-                    points = points
-                )
-            }
-            if (trackToExport != null) {
-                viewModel.exportTrack(trackToExport, uri)
-            }
+            // ✅ Экспортируем все треки (запись остановится автоматически, если идёт)
+            viewModel.exportAllTracks(uri)
         }
     }
 
@@ -115,7 +107,7 @@ fun MapScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.importTrack(uri)
+            viewModel.importTracks(uri)
         }
     }
 
@@ -247,12 +239,19 @@ fun MapScreen(
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
-                title = { Text("Экспорт трека") },
+                title = { Text("Экспорт всех треков") },
                 text = {
                     if (uiState.historyTracks.isEmpty()) {
                         Text("Нет сохраненных треков для экспорта.")
                     } else {
-                        Text("Будет экспортирован последний записанный трек в формате GeoJSON.")
+                        val totalPoints = uiState.historyTracks.sumOf { it.size }
+                        Text(
+                            "Будут экспортированы все треки (${uiState.historyTracks.size} треков, " +
+                                    "$totalPoints точек) в формате GeoJSON.\n\n" +
+                                    if (uiState.isRecording)
+                                        "⚠️ Текущая запись будет остановлена перед экспортом."
+                                    else ""
+                        )
                     }
                 },
                 confirmButton = {
@@ -260,7 +259,7 @@ fun MapScreen(
                         onClick = {
                             viewModel.setShowExportDialog(false)
                             if (uiState.historyTracks.isNotEmpty()) {
-                                exportLauncher.launch("track_export.geojson")
+                                exportLauncher.launch("all_tracks_export.geojson")
                             }
                         }
                     ) {
