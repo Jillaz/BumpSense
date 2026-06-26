@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
@@ -40,18 +41,30 @@ class RecordingService : Service() {
     private lateinit var bumpIndexCalculator: BumpIndexCalculator
     private lateinit var dataCollector: RecordingDataCollector
 
+    // ✅ WakeLock для удержания CPU активным во время записи
+    private var wakeLock: PowerManager.WakeLock? = null
+
     private var currentTrackId: Long = 0L
     private val trackPoints = mutableListOf<TrackPoint>()
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("BumpSense", "🔧 RecordingService: onCreate")
+        Log.d("BumpSense", " RecordingService: onCreate")
 
         val app = application as BumpSenseApp
         locationClient = LocationClient(this)
         accelerometerClient = AccelerometerClient(this)
         bumpIndexCalculator = BumpIndexCalculator()
         dataCollector = RecordingDataCollector(locationClient, accelerometerClient, bumpIndexCalculator)
+
+        // ✅ Инициализация WakeLock
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "BumpSense::RecordingWakeLock"
+        ).apply {
+            setReferenceCounted(false) // Упрощает управление (не нужно считать acquire/release)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -76,6 +89,10 @@ class RecordingService : Service() {
 
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
+
+        // ✅ Приобретаем WakeLock на 10 минут (продлеваем при каждом сохранении)
+        wakeLock?.acquire(10 * 60 * 1000L)
+        Log.d("BumpSense", "🔒 WakeLock acquired (10 минут)")
 
         recordingJob = serviceScope.launch {
             try {
@@ -111,13 +128,16 @@ class RecordingService : Service() {
 
                         // Сохраняем в БД каждые 5 точек
                         if (trackPoints.size % 5 == 0) {
+                            // ✅ Продлеваем WakeLock ещё на 10 минут
+                            wakeLock?.acquire(10 * 60 * 1000L)
+
                             app.trackRepository.insertTrack(
                                 track.copy(
                                     id = currentTrackId,
                                     points = trackPoints.toList()
                                 )
                             )
-                            Log.d("BumpSense", " RecordingService: сохранено в БД, точек=${trackPoints.size}")
+                            Log.d("BumpSense", "💾 RecordingService: сохранено в БД, точек=${trackPoints.size}, WakeLock продлён")
                         }
 
                         // Отправляем обновление в UI
@@ -135,7 +155,7 @@ class RecordingService : Service() {
 
                 Log.d("BumpSense", "✅ RecordingService: сбор данных запущен")
             } catch (e: Exception) {
-                Log.e("BumpSense", " RecordingService: критическая ошибка", e)
+                Log.e("BumpSense", "❌ RecordingService: критическая ошибка", e)
             }
         }
     }
@@ -145,6 +165,14 @@ class RecordingService : Service() {
 
         recordingJob?.cancel()
         recordingJob = null
+
+        // ✅ Освобождаем WakeLock
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d("BumpSense", "🔓 WakeLock released")
+            }
+        }
 
         serviceScope.launch {
             val app = application as BumpSenseApp
@@ -190,6 +218,15 @@ class RecordingService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d("BumpSense", "🔚 RecordingService: onDestroy")
+
+        // ✅ Гарантированное освобождение WakeLock
+        wakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+                Log.d("BumpSense", "🔓 WakeLock released (onDestroy)")
+            }
+        }
+
         serviceScope.cancel()
     }
 

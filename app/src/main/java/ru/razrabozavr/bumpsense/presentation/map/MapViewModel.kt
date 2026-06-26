@@ -10,6 +10,9 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +22,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
-import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.mapper.GeoJsonMapper
 import ru.razrabozavr.bumpsense.domain.model.Track
@@ -52,14 +54,14 @@ data class CameraBounds(
     val maxLon: Double
 )
 
-class MapViewModel(application: Application) : AndroidViewModel(application) {
+class MapViewModel(application: Application) : AndroidViewModel(application),
+    DefaultLifecycleObserver {
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
 
     private val trackRepository = (application as BumpSenseApp).trackRepository
     private val appPreferences = (application as BumpSenseApp).appPreferences
-    private val appContext: Context = application
 
     private val locationClient = LocationClient(application)
     private var locationJob: Job? = null
@@ -156,7 +158,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         doExportAllTracks(pendingUri)
                     } else {
                         _uiState.update { current ->
-                            current.copy(snackbarMessage = appContext.getString(R.string.snackbar_recording_stopped))
+                            current.copy(snackbarMessage = "Запись маршрута завершена")
                         }
                     }
                 }
@@ -165,14 +167,39 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
+        // ✅ Регистрируем observer для lifecycle
+        ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+
         loadHistoryTracks()
         registerReceiver()
         startGpsTracking()
     }
 
+    // ===== LIFECYCLE-AWARE GPS =====
+
+    override fun onStart(owner: LifecycleOwner) {
+        // Приложение на переднем плане — запускаем GPS для отображения на карте
+        Log.d("BumpSense", "▶️ App foreground — запускаем GPS для карты")
+        startGpsTracking()
+    }
+
+    override fun onStop(owner: LifecycleOwner) {
+        // ✅ Приложение в фоне — останавливаем GPS для карты (если запись не идёт)
+        // Во время записи GPS работает через RecordingService с WakeLock
+        if (!_uiState.value.isRecording) {
+            locationJob?.cancel()
+            locationJob = null
+            Log.d("BumpSense", "⏸️ GPS остановлен (приложение в фоне, запись не идёт) — разрешаем Doze Mode")
+        } else {
+            Log.d("BumpSense", "⏸️ Приложение в фоне, но запись идёт — GPS работает через сервис")
+        }
+    }
+
+    // ===== GPS ТРЕКИНГ =====
+
     private fun startGpsTracking() {
         if (locationJob?.isActive == true) {
-            Log.d("BumpSense", "⏸️ GPS уже работает")
+            Log.d("BumpSense", "️ GPS уже работает")
             return
         }
 
@@ -182,7 +209,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
         locationJob = viewModelScope.launch {
             try {
                 locationClient.getLocationUpdates(interval).collect { location ->
-                    Log.d("BumpSense", "📍 GPS обновление: ${location.latitude}, ${location.longitude}")
+                    Log.d("BumpSense", " GPS обновление: ${location.latitude}, ${location.longitude}")
                     _uiState.update { current ->
                         current.copy(
                             currentLocation = location,
@@ -290,9 +317,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 val allTracks = trackRepository.getAllTracks().first()
 
                 if (allTracks.isEmpty()) {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_no_tracks_for_export))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Нет треков для экспорта") }
                     return@launch
                 }
 
@@ -304,20 +329,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
                 val totalPoints = allTracks.sumOf { track -> track.points.size }
                 _uiState.update { current ->
-                    current.copy(
-                        snackbarMessage = appContext.getString(
-                            R.string.snackbar_export_success,
-                            allTracks.size,
-                            totalPoints
-                        )
-                    )
+                    current.copy(snackbarMessage = "Экспортировано треков: ${allTracks.size}, точек: $totalPoints")
                 }
                 Log.d("BumpSense", "✅ Экспортировано треков: ${allTracks.size}, точек: $totalPoints")
             } catch (e: Exception) {
                 e.printStackTrace()
-                _uiState.update { current ->
-                    current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_export, e.message ?: ""))
-                }
+                _uiState.update { current -> current.copy(snackbarMessage = "Ошибка при экспорте: ${e.message}") }
             }
         }
     }
@@ -329,9 +346,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
                 val inputStream = context.contentResolver.openInputStream(uri)
                 if (inputStream == null) {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_file_open))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Не удалось открыть файл") }
                     return@launch
                 }
 
@@ -341,9 +356,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d("BumpSense", "📥 Размер файла: ${jsonString.length} символов")
 
                 if (jsonString.isEmpty()) {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_file_empty))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Файл пустой") }
                     return@launch
                 }
 
@@ -358,31 +371,21 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     tracks.forEach { track ->
                         trackRepository.insertTrack(track)
                         totalPoints += track.points.size
-                        Log.d("BumpSense", " Трек '${track.name}': ${track.points.size} точек")
+                        Log.d("BumpSense", "📥 Трек '${track.name}': ${track.points.size} точек")
                     }
 
                     _uiState.update { current ->
-                        current.copy(
-                            snackbarMessage = appContext.getString(
-                                R.string.snackbar_import_success,
-                                tracks.size,
-                                totalPoints
-                            )
-                        )
+                        current.copy(snackbarMessage = "Импортировано треков: ${tracks.size}, точек: $totalPoints")
                     }
                     Log.d("BumpSense", "✅ Импортировано треков: ${tracks.size}, точек: $totalPoints")
                 } else {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_format))
-                    }
-                    Log.e("BumpSense", " geoJsonToTracks вернул пустой список")
+                    _uiState.update { current -> current.copy(snackbarMessage = "Неверный формат файла или нет треков") }
+                    Log.e("BumpSense", "❌ geoJsonToTracks вернул пустой список")
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 Log.e("BumpSense", "❌ Ошибка импорта: ${e.message}", e)
-                _uiState.update { current ->
-                    current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_import, e.message ?: ""))
-                }
+                _uiState.update { current -> current.copy(snackbarMessage = "Ошибка при импорте: ${e.message}") }
             }
         }
     }
@@ -394,9 +397,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
                 val inputStream = context.contentResolver.openInputStream(uri)
                 if (inputStream == null) {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_file_open))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Не удалось открыть файл") }
                     return@launch
                 }
 
@@ -406,14 +407,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d("BumpSense", "📥 Размер файла: ${jsonString.length} символов")
 
                 if (jsonString.isEmpty()) {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_file_empty))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Файл пустой") }
                     return@launch
                 }
 
                 val tracks = GeoJsonMapper.geoJsonToTracks(jsonString)
-                Log.d("BumpSense", "📥 Распаршено треков: ${tracks.size}")
+                Log.d("BumpSense", " Распаршено треков: ${tracks.size}")
 
                 if (tracks.isNotEmpty()) {
                     val existingTracks = trackRepository.getAllTracks().first()
@@ -426,7 +425,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     tracks.forEach { track ->
                         if (track.startTime in existingStartTimes) {
                             skippedCount++
-                            Log.d("BumpSense", "️ Пропущен дубликат трека '${track.name}' (startTime=${track.startTime})")
+                            Log.d("BumpSense", "⏭️ Пропущен дубликат трека '${track.name}' (startTime=${track.startTime})")
                         } else {
                             trackRepository.insertTrack(track)
                             addedCount++
@@ -435,30 +434,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    val baseMessage = appContext.getString(
-                        R.string.snackbar_append_success,
-                        addedCount,
-                        totalPoints
-                    )
-                    val message = if (skippedCount > 0) {
-                        "$baseMessage ${appContext.getString(R.string.snackbar_append_skipped, skippedCount)}"
-                    } else {
-                        baseMessage
-                    }
+                    val message = "Добавлено треков: $addedCount, точек: $totalPoints" +
+                            if (skippedCount > 0) " (пропущено дубликатов: $skippedCount)" else ""
 
                     _uiState.update { current -> current.copy(snackbarMessage = message) }
                     Log.d("BumpSense", "✅ $message")
                 } else {
-                    _uiState.update { current ->
-                        current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_format))
-                    }
+                    _uiState.update { current -> current.copy(snackbarMessage = "Неверный формат файла или нет треков") }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                Log.e("BumpSense", " Ошибка добавления треков: ${e.message}", e)
-                _uiState.update { current ->
-                    current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_append, e.message ?: ""))
-                }
+                Log.e("BumpSense", "❌ Ошибка добавления треков: ${e.message}", e)
+                _uiState.update { current -> current.copy(snackbarMessage = "Ошибка при добавлении треков: ${e.message}") }
             }
         }
     }
@@ -527,9 +514,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                 _cameraBounds.value = null
             }
 
-            _uiState.update { current ->
-                current.copy(snackbarMessage = appContext.getString(R.string.snackbar_track_deleted))
-            }
+            _uiState.update { current -> current.copy(snackbarMessage = "Трек удален") }
         }
     }
 
@@ -575,16 +560,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
                     current.copy(
                         historyTracks = emptyList(),
                         currentTrackPoints = emptyList(),
-                        snackbarMessage = appContext.getString(R.string.snackbar_db_cleared)
+                        snackbarMessage = "База данных полностью очищена"
                     )
                 }
                 _trackEditState.update { current -> current.copy(tracks = emptyList()) }
                 Log.d("BumpSense", "🗑️ База данных очищена")
             } catch (e: Exception) {
                 Log.e("BumpSense", "❌ Ошибка при очистке БД", e)
-                _uiState.update { current ->
-                    current.copy(snackbarMessage = appContext.getString(R.string.snackbar_error_clear_db))
-                }
+                _uiState.update { current -> current.copy(snackbarMessage = "Ошибка при очистке БД") }
             } finally {
                 _showClearDbDialog.value = false
             }
@@ -597,6 +580,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        // ✅ Удаляем observer
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         locationJob?.cancel()
         try {
             getApplication<Application>().unregisterReceiver(trackPointReceiver)

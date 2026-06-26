@@ -102,6 +102,9 @@ dependencies {
     // MapLibre
     implementation(libs.maplibre.android)
 
+    // Lifecycle (для ProcessLifecycleOwner)
+    implementation(libs.androidx.lifecycle.process)
+
     // Location
     implementation(libs.play.services.location)
 

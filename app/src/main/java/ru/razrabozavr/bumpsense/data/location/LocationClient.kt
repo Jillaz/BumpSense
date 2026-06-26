@@ -13,7 +13,7 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await  // ← ДОБАВЬТЕ ЭТОТ ИМПОРТ
+import kotlinx.coroutines.tasks.await
 
 class LocationClient(private val context: Context) {
 
@@ -24,6 +24,7 @@ class LocationClient(private val context: Context) {
     fun getLocationUpdates(intervalMs: Long = 2000L): Flow<Location> = callbackFlow {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs / 2)
+            .setWaitForAccurateLocation(false) // ✅ Не ждать точное местоположение (быстрее получаем)
             .build()
 
         val callback = object : LocationCallback() {
@@ -52,7 +53,7 @@ class LocationClient(private val context: Context) {
                 Priority.PRIORITY_HIGH_ACCURACY,
                 null
             )
-            task.await()  // Теперь этот метод доступен
+            task.await()
         } catch (_: Exception) {
             null
         }
