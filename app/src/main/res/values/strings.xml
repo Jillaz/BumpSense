@@ -1,27 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Название приложения -->
     <string name="app_name">Где трясет</string>
-
-    <!-- Map Screen -->
-
-    <!-- Permissions -->
 
     <!-- Recording Service -->
     <string name="service_notification_title">Где трясет</string>
     <string name="service_notification_text">Идет запись маршрута…</string>
     <string name="service_channel_name">Запись маршрута</string>
     <string name="service_channel_description">Уведомление о работе сервиса записи маршрута</string>
-
-    <!-- Диалог "О программе" -->
-    <string name="about_title">О программе</string>
-    <string name="about_description">
-        🗺️ Запись и анализ маршрутов — отслеживание GPS-координат и фоновый сбор данных с датчиков во время поездки.\n\n
-        📳 Оценка качества дорог — автоматическое определение неровностей и выбоин с помощью акселерометра.\n\n
-        🎨 Цветовая карта неровностей — наглядное выделение участков дороги 5 цветами в зависимости от силы тряски.\n\n
-        📊 Панель телеметрии — мониторинг перегрузок, индекса неровности и пиковых значений в реальном времени.\n\n
-        📤 Экспорт в GeoJSON — сохранение и обмен записанными маршрутами в универсальном геоформате.\n\n
-        🛰️ История поездок — автоматическое сохранение всех маршрутов с возможностью просмотра на карте.
-    </string>
 
     <!-- Меню -->
     <string name="menu_content_description">Меню</string>
@@ -30,5 +16,86 @@
     <string name="menu_append">Добавить треки</string>
     <string name="menu_edit">Редактировать треки</string>
     <string name="menu_clear">Очистить базу данных</string>
+    <string name="menu_settings">Настройки</string>
     <string name="menu_about">О программе</string>
+
+    <!-- Диалог "О программе" -->
+    <string name="about_title">О программе</string>
+    <string name="about_description">🗺️ Запись и анализ маршрутов — отслеживание GPS-координат и фоновый сбор данных с датчиков во время поездки.\n\n📳 Оценка качества дорог — автоматическое определение неровностей и выбоин с помощью акселерометра.\n\n🎨 Цветовая карта неровностей — наглядное выделение участков дороги 5 цветами в зависимости от силы тряски.\n\n📊 Панель телеметрии — мониторинг перегрузок, индекса неровности и пиковых значений в реальном времени.\n\n📤 Экспорт в GeoJSON — сохранение и обмен записанными маршрутами в универсальном геоформате.\n\n🛰️ История поездок — автоматическое сохранение всех маршрутов с возможностью просмотра на карте.</string>
+
+    <!-- Экран настроек -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_back">Назад</string>
+
+    <!-- Настройка: Темная тема -->
+    <string name="settings_dark_theme_title">Темная тема</string>
+    <string name="settings_dark_theme_on">Включена</string>
+    <string name="settings_dark_theme_off">Выключена</string>
+    <string name="settings_dark_theme_description">Переключает интерфейс приложения между светлой и темной темой оформления. Темная тема снижает нагрузку на глаза в условиях низкой освещенности и экономит заряд на AMOLED-экранах.</string>
+
+    <!-- Настройка: Частота GPS -->
+    <string name="settings_gps_title">Частота GPS</string>
+    <string name="settings_gps_description">Как часто обновляются GPS-координаты во время записи маршрута. Меньший интервал дает более точный трек, но увеличивает расход батареи и объем данных. Рекомендуется 2–5 секунд для оптимального баланса точности и энергопотребления.</string>
+    <string name="settings_gps_current">Текущий интервал: %d сек</string>
+    <string name="settings_gps_unit">сек</string>
+
+    <!-- Настройка: Радиус обновления точек -->
+    <string name="settings_radius_title">Радиус обновления точек</string>
+    <string name="settings_radius_description">Минимальное расстояние между точками трека. Если новое положение отличается от предыдущего менее чем на указанное значение — точка не записывается. Уменьшение радиуса делает трек более детальным, но увеличивает размер базы. Рекомендуется 10–20 м для городской среды.</string>
+    <string name="settings_radius_current">Текущий радиус: %d м</string>
+    <string name="settings_radius_unit">м</string>
+
+    <!-- Настройка: Чувствительность акселерометра -->
+    <string name="settings_accel_title">Чувствительность акселерометра</string>
+    <string name="settings_accel_description">Порог срабатывания детектора неровностей. При меньшем значении фиксируются даже мелкие неровности (трещины, стыки плитки), при большем — только существенные выбоины. Рекомендуется 5–10 м/с² для стандартных дорог.</string>
+    <string name="settings_accel_current">Текущий порог: %.1f м/с²</string>
+    <string name="settings_accel_unit">м/с²</string>
+
+    <!-- Общие кнопки -->
+    <string name="button_close">Закрыть</string>
+    <string name="button_cancel">Отмена</string>
+    <string name="button_delete">Удалить</string>
+    <string name="button_delete_all">Удалить всё</string>
+    <string name="button_export">Экспортировать</string>
+
+    <!-- Диалоги подтверждения -->
+    <string name="dialog_export_title">Экспорт всех треков</string>
+    <string name="dialog_export_empty">Нет сохраненных треков для экспорта.</string>
+    <string name="dialog_export_confirm">Будут экспортированы все треки (%d треков, %d точек) в формате GeoJSON.</string>
+    <string name="dialog_export_warning">\n\n⚠️ Текущая запись будет остановлена перед экспортом.</string>
+
+    <string name="dialog_clear_db_title">Очистка базы данных</string>
+    <string name="dialog_clear_db_message">Вы уверены, что хотите удалить ВСЕ сохраненные треки? Это действие нельзя отменить.</string>
+
+    <string name="dialog_delete_track_title">Удаление трека</string>
+    <string name="dialog_delete_track_message">Вы уверены, что хотите удалить трек "%s"? Это действие нельзя отменить.</string>
+
+    <!-- Сообщения Snackbar -->
+    <string name="snackbar_recording_stopped">Запись маршрута завершена</string>
+    <string name="snackbar_track_deleted">Трек удален</string>
+    <string name="snackbar_db_cleared">База данных полностью очищена</string>
+    <string name="snackbar_export_success">Экспортировано треков: %d, точек: %d</string>
+    <string name="snackbar_import_success">Импортировано треков: %d, точек: %d</string>
+    <string name="snackbar_append_success">Добавлено треков: %d, точек: %d</string>
+    <string name="snackbar_append_skipped">(пропущено дубликатов: %d)</string>
+    <string name="snackbar_error_file_open">Не удалось открыть файл</string>
+    <string name="snackbar_error_file_empty">Файл пустой</string>
+    <string name="snackbar_error_format">Неверный формат файла или нет треков</string>
+    <string name="snackbar_no_tracks_for_export">Нет треков для экспорта</string>
+
+    <!-- Режим редактирования треков -->
+    <string name="edit_tracks_title">Редактировать треки</string>
+    <string name="edit_tracks_empty">Нет сохраненных треков</string>
+    <string name="edit_tracks_points_count">Точек: %d</string>
+
+    <!-- FAB кнопки -->
+    <string name="auto_follow_on">Авто-наведение включено</string>
+    <string name="auto_follow_off">Авто-наведение выключено</string>
+    <string name="my_location">Мое местоположение</string>
+
+    <!-- Ошибки (для snackbar) -->
+    <string name="snackbar_error_export">Ошибка при экспорте: %s</string>
+    <string name="snackbar_error_import">Ошибка при импорте: %s</string>
+    <string name="snackbar_error_append">Ошибка при добавлении треков: %s</string>
+    <string name="snackbar_error_clear_db">Ошибка при очистке БД</string>
 </resources>

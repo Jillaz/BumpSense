@@ -39,12 +39,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.domain.model.Track
 
 data class TrackEditUiState(
@@ -61,16 +63,15 @@ fun TrackEditScreen(
     onDeleteClick: (Track) -> Unit,
     onDeleteConfirm: () -> Unit,
     onDeleteCancel: () -> Unit,
-    modifier: Modifier = Modifier  // ✅ Новый параметр
+    modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var trackToDelete by remember { mutableStateOf<Track?>(null) }
 
-    // ✅ Нижняя панель высотой 30% экрана
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .fillMaxHeight(0.3f)  // 30% высоты экрана
+            .fillMaxHeight(0.3f)
     ) {
         Surface(
             modifier = Modifier
@@ -93,12 +94,12 @@ fun TrackEditScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Назад",
+                            contentDescription = stringResource(R.string.settings_back),
                             modifier = Modifier.size(18.dp)
                         )
                     }
                     Text(
-                        text = "Редактировать треки",
+                        text = stringResource(R.string.edit_tracks_title),
                         style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp),
                         modifier = Modifier.padding(start = 4.dp)
                     )
@@ -114,7 +115,6 @@ fun TrackEditScreen(
 
                 // Содержимое
                 if (uiState.tracks.isEmpty()) {
-                    // Пустой список
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -130,13 +130,12 @@ fun TrackEditScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Нет сохраненных треков",
+                            text = stringResource(R.string.edit_tracks_empty),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
-                    // Список треков
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -158,7 +157,7 @@ fun TrackEditScreen(
             }
         }
 
-        // ✅ Диалог подтверждения удаления
+        // Диалог подтверждения удаления
         if (showDeleteDialog && trackToDelete != null) {
             val safeTrack = trackToDelete ?: return@Box
 
@@ -167,11 +166,13 @@ fun TrackEditScreen(
                     showDeleteDialog = false
                     trackToDelete = null
                 },
-                title = { Text("Удаление трека") },
+                title = { Text(stringResource(R.string.dialog_delete_track_title)) },
                 text = {
                     Text(
-                        "Вы уверены, что хотите удалить трек " +
-                                "\"${safeTrack.name}\"? Это действие нельзя отменить."
+                        stringResource(
+                            R.string.dialog_delete_track_message,
+                            safeTrack.name
+                        )
                     )
                 },
                 confirmButton = {
@@ -184,7 +185,7 @@ fun TrackEditScreen(
                         }
                     ) {
                         Text(
-                            "Удалить",
+                            stringResource(R.string.button_delete),
                             color = MaterialTheme.colorScheme.error
                         )
                     }
@@ -197,7 +198,7 @@ fun TrackEditScreen(
                             onDeleteCancel()
                         }
                     ) {
-                        Text("Отмена")
+                        Text(stringResource(R.string.button_cancel))
                     }
                 }
             )
@@ -235,7 +236,6 @@ private fun TrackItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                // ✅ Шрифт даты уменьшен на 25% (было 16sp → 12sp)
                 Text(
                     text = dateText,
                     style = MaterialTheme.typography.titleSmall.copy(fontSize = 12.sp),
@@ -249,9 +249,8 @@ private fun TrackItem(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
-                // ✅ Шрифт количества точек уменьшен на 25% (было 12sp → 9sp)
                 Text(
-                    text = "Точек: ${track.points.size}",
+                    text = stringResource(R.string.edit_tracks_points_count, track.points.size),
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                     color = if (isFocused)
                         MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
@@ -260,16 +259,15 @@ private fun TrackItem(
                 )
             }
 
-            // ✅ Кнопка удаления уменьшена
             IconButton(
                 onClick = onDeleteClick,
                 modifier = Modifier.size(28.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
-                    contentDescription = "Удалить трек",
+                    contentDescription = stringResource(R.string.button_delete),
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)  // Было 24dp
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

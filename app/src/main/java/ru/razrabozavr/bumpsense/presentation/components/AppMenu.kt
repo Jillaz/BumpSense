@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -31,87 +32,22 @@ fun AppMenu(
     onClearDbClick: () -> Unit,
     onEditTracksClick: () -> Unit,
     onAboutClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-
     Box(modifier = modifier) {
         IconButton(onClick = { expanded = true }) {
-            Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = stringResource(R.string.menu_content_description)
-            )
+            Icon(imageVector = Icons.Default.Menu, contentDescription = stringResource(R.string.menu_content_description))
         }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_export)) },
-                onClick = {
-                    expanded = false
-                    onExportClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.FileUpload, contentDescription = null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_import)) },
-                onClick = {
-                    expanded = false
-                    onImportClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.FileDownload, contentDescription = null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_append)) },
-                onClick = {
-                    expanded = false
-                    onAppendTracksClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.AddCircle, contentDescription = null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_edit)) },
-                onClick = {
-                    expanded = false
-                    onEditTracksClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.Edit, contentDescription = null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_clear)) },
-                onClick = {
-                    expanded = false
-                    onClearDbClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = null)
-                }
-            )
-
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.menu_about)) },
-                onClick = {
-                    expanded = false
-                    onAboutClick()
-                },
-                leadingIcon = {
-                    Icon(Icons.Default.Info, contentDescription = null)
-                }
-            )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_export)) }, onClick = { expanded = false; onExportClick() }, leadingIcon = { Icon(Icons.Default.FileUpload, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_import)) }, onClick = { expanded = false; onImportClick() }, leadingIcon = { Icon(Icons.Default.FileDownload, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_append)) }, onClick = { expanded = false; onAppendTracksClick() }, leadingIcon = { Icon(Icons.Default.AddCircle, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_edit)) }, onClick = { expanded = false; onEditTracksClick() }, leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_clear)) }, onClick = { expanded = false; onClearDbClick() }, leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_settings)) }, onClick = { expanded = false; onSettingsClick() }, leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) })
+            DropdownMenuItem(text = { Text(stringResource(R.string.menu_about)) }, onClick = { expanded = false; onAboutClick() }, leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) })
         }
     }
 }

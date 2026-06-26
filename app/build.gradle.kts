@@ -11,22 +11,23 @@ android {
     defaultConfig {
         applicationId = "ru.razrabozavr.bumpsense"
         minSdk = 26
-        targetSdk = 36  // ✅ Обновлено до последней версии (было 36)
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // ✅ Новый способ фильтрации локалей (вместо устаревшего resourceConfigurations)
+        // ✅ Фильтрация локалей (только русский и английский)
+        @Suppress("UnstableApiUsage")
         androidResources {
             localeFilters += listOf("ru", "en")
         }
     }
 
-    // ✅ Включаем R8 (сжатие и обфускация) для уменьшения размера APK
+    // ✅ Включаем R8 (сжатие и обфускация)
     buildTypes {
         release {
-            isMinifyEnabled = true       // ✅ ВКЛЮЧЕНО (было выключено через optimization.enable = false)
-            isShrinkResources = true     // ✅ Удаляет неиспользуемые ресурсы
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -37,7 +38,7 @@ android {
         }
     }
 
-    // ✅ Разделение APK по архитектурам процессора (экономит ~20 МБ)
+    // ✅ Разделение APK по архитектурам (экономит ~20 МБ)
     splits {
         abi {
             isEnable = true
@@ -56,7 +57,7 @@ android {
         compose = true
     }
 
-    // ✅ Очистка от лишних мета-файлов в библиотеках
+    // ✅ Очистка от лишних мета-файлов
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
