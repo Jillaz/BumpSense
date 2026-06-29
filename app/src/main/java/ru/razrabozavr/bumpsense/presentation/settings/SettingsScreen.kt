@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
@@ -40,13 +41,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.razrabozavr.bumpsense.R
 
-// ✅ Обновлённый SettingsState с полем автосохранения
+// ✅ Обновлённый SettingsState
 data class SettingsState(
     val isDarkTheme: Boolean,
     val gpsIntervalMs: Long,
     val updateRadiusMeters: Double,
     val accelerometerThreshold: Float,
-    val autoSaveIntervalMinutes: Int  // ✅ Новое поле (5-60 минут)
+    val autoSaveIntervalMinutes: Int,
+    val minUpdateDistanceMeters: Float  // ✅ Новое поле
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,7 +60,8 @@ fun SettingsScreen(
     onGpsIntervalChange: (Long) -> Unit,
     onUpdateRadiusChange: (Double) -> Unit,
     onAccelerometerThresholdChange: (Float) -> Unit,
-    onAutoSaveIntervalChange: (Int) -> Unit  // ✅ Новый callback
+    onAutoSaveIntervalChange: (Int) -> Unit,
+    onMinUpdateDistanceChange: (Float) -> Unit  // ✅ Новый callback
 ) {
     Scaffold(
         topBar = {
@@ -188,7 +191,7 @@ fun SettingsScreen(
                 }
             }
 
-            // ✅ Автосохранение треков (новая карточка)
+            // Автосохранение треков
             var autoSaveValue by remember { mutableFloatStateOf(settingsState.autoSaveIntervalMinutes.toFloat()) }
             SettingsCard(
                 icon = Icons.Default.Timer,
@@ -203,7 +206,7 @@ fun SettingsScreen(
                             onAutoSaveIntervalChange(it.toInt())
                         },
                         valueRange = 5f..60f,
-                        steps = 11,  // 12 позиций: 5, 10, 15... 60
+                        steps = 11,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
@@ -214,6 +217,40 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 10.sp,
                         modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+            // ✅ Минимальное смещение для точки (новая карточка)
+            var distanceValue by remember { mutableFloatStateOf(settingsState.minUpdateDistanceMeters) }
+            SettingsCard(
+                icon = Icons.Default.LocationOn,
+                title = stringResource(R.string.settings_min_distance_title),
+                description = stringResource(R.string.settings_min_distance_description)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Slider(
+                        value = distanceValue,
+                        onValueChange = {
+                            distanceValue = it
+                            onMinUpdateDistanceChange(it)
+                        },
+                        valueRange = 0f..10f,
+                        steps = 19,  // 21 позиция: 0, 0.5, 1, 1.5... 10
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = if (distanceValue == 0f)
+                            stringResource(R.string.settings_min_distance_disabled)
+                        else
+                            stringResource(R.string.settings_min_distance_current, distanceValue),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp),
+                        color = if (distanceValue == 0f)
+                            MaterialTheme.colorScheme.error
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Radar
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
@@ -51,7 +52,6 @@ fun SettingsInfoPanel(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Частота GPS
             InfoRow(
                 icon = Icons.Default.GpsFixed,
                 label = "GPS:",
@@ -60,7 +60,6 @@ fun SettingsInfoPanel(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Радиус обновления
             InfoRow(
                 icon = Icons.Default.Radar,
                 label = "Радиус:",
@@ -69,7 +68,6 @@ fun SettingsInfoPanel(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // Чувствительность акселерометра
             InfoRow(
                 icon = Icons.Default.Vibration,
                 label = "Порог:",
@@ -78,11 +76,22 @@ fun SettingsInfoPanel(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // ✅ Автосохранение треков
             InfoRow(
                 icon = Icons.Default.Timer,
                 label = "Автосохр:",
                 value = "${settingsState.autoSaveIntervalMinutes} мин"
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // ✅ Минимальное смещение
+            InfoRow(
+                icon = Icons.Default.LocationOn,
+                label = "Мин.смещ:",
+                value = if (settingsState.minUpdateDistanceMeters == 0f)
+                    "выкл"
+                else
+                    "%.1f м".format(settingsState.minUpdateDistanceMeters)
             )
         }
     }

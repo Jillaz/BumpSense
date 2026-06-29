@@ -98,7 +98,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
             gpsIntervalMs = appPreferences.gpsIntervalMs,
             updateRadiusMeters = appPreferences.updateRadiusMeters,
             accelerometerThreshold = appPreferences.accelerometerThreshold,
-            autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes  // ✅
+            autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes,
+            minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters  // ✅// ✅
         )
     )
     val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
@@ -116,6 +117,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         appPreferences.isDarkTheme = isDark
         _settingsState.update { current -> current.copy(isDarkTheme = isDark) }
         _isDarkTheme.value = isDark
+    }
+
+    // ✅ Метод для обновления минимального смещения
+    fun updateMinUpdateDistance(meters: Float) {
+        appPreferences.minUpdateDistanceMeters = meters
+        _settingsState.update { current -> current.copy(minUpdateDistanceMeters = meters) }
+        // ✅ Применяем значение к текущему LocationClient
+        locationClient.minUpdateDistanceMeters = meters
+        Log.d("BumpSense", "📏 Мин. смещение изменено на $meters м")
     }
 
     fun updateGpsInterval(intervalMs: Long) {
@@ -211,7 +221,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
 
         val interval = appPreferences.gpsIntervalMs
-        Log.d("BumpSense", "🚀 Запуск GPS с интервалом ${interval}мс")
+        // ✅ Применяем значение из настроек
+        locationClient.minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
+        Log.d("BumpSense", "🚀 Запуск GPS с интервалом ${interval}мс, мин.смещение=${appPreferences.minUpdateDistanceMeters}м")
 
         locationJob = viewModelScope.launch {
             try {

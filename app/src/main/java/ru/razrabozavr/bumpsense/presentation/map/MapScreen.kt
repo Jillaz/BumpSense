@@ -249,7 +249,8 @@ fun MapScreen(
                     onGpsIntervalChange = { viewModel.updateGpsInterval(it) },
                     onUpdateRadiusChange = { viewModel.updateRadius(it) },
                     onAccelerometerThresholdChange = { viewModel.updateAccelerometerThreshold(it) },
-                    onAutoSaveIntervalChange = { minutes -> viewModel.updateAutoSaveInterval(minutes) }  // ✅ Новый параметр
+                    onAutoSaveIntervalChange = { minutes -> viewModel.updateAutoSaveInterval(minutes) },
+                    onMinUpdateDistanceChange = { meters -> viewModel.updateMinUpdateDistance(meters) }  // ✅// ✅ Новый параметр
                 )
             }
         }

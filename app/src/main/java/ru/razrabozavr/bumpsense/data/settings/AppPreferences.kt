@@ -24,16 +24,21 @@ class AppPreferences(context: Context) {
         get() = prefs.getFloat(KEY_ACCEL_THRESHOLD, 5.0f)
         set(value) = prefs.edit { putFloat(KEY_ACCEL_THRESHOLD, value) }
 
-    // ✅ Новая настройка: автосохранение треков (5-60 минут, по умолчанию 15)
     var autoSaveIntervalMinutes: Int
         get() = prefs.getInt(KEY_AUTO_SAVE_INTERVAL, 15)
         set(value) = prefs.edit { putInt(KEY_AUTO_SAVE_INTERVAL, value) }
+
+    // ✅ Новая настройка: минимальное смещение для добавления точки (0-10 м, по умолчанию 5)
+    var minUpdateDistanceMeters: Float
+        get() = prefs.getFloat(KEY_MIN_UPDATE_DISTANCE, 5f)
+        set(value) = prefs.edit { putFloat(KEY_MIN_UPDATE_DISTANCE, value) }
 
     companion object {
         private const val KEY_DARK_THEME = "dark_theme"
         private const val KEY_GPS_INTERVAL = "gps_interval"
         private const val KEY_UPDATE_RADIUS = "update_radius"
         private const val KEY_ACCEL_THRESHOLD = "accelerometer_threshold"
-        private const val KEY_AUTO_SAVE_INTERVAL = "auto_save_interval"  // ✅
+        private const val KEY_AUTO_SAVE_INTERVAL = "auto_save_interval"
+        private const val KEY_MIN_UPDATE_DISTANCE = "min_update_distance"  // ✅
     }
 }

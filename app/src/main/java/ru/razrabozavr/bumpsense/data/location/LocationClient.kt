@@ -20,12 +20,20 @@ class LocationClient(private val context: Context) {
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
+    // ✅ Настраиваемое минимальное смещение (по умолчанию 5 м)
+    var minUpdateDistanceMeters: Float = 5f
+
     @SuppressLint("MissingPermission")
     fun getLocationUpdates(intervalMs: Long = 2000L): Flow<Location> = callbackFlow {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs / 2)
             .setWaitForAccurateLocation(false)
-            .setMinUpdateDistanceMeters(5f)  // ✅ Фильтр по расстоянию: точки только при движении ≥ 5 метров
+            .apply {
+                // ✅ Если значение > 0 — включаем фильтр, иначе фильтр отключён
+                if (minUpdateDistanceMeters > 0f) {
+                    setMinUpdateDistanceMeters(minUpdateDistanceMeters)
+                }
+            }
             .build()
 
         val callback = object : LocationCallback() {

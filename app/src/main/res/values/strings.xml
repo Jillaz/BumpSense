@@ -32,6 +32,12 @@
     <string name="settings_title">Настройки</string>
     <string name="settings_back">Назад</string>
 
+    <!-- ✅ Настройка: Минимальное смещение для точки -->
+    <string name="settings_min_distance_title">Мин. смещение для точки</string>
+    <string name="settings_min_distance_description">Минимальное расстояние, на которое должно сместиться устройство, чтобы добавить новую точку в трек. При значении 0 м точки добавляются при каждом обновлении GPS (даже на стоянке). Рекомендуется 3–5 м для обычной езды.</string>
+    <string name="settings_min_distance_current">Текущее значение: %.1f м</string>
+    <string name="settings_min_distance_disabled">Фильтр отключён (0 м) — точки добавляются всегда</string>
+
     <!-- Настройка: Темная тема -->
     <string name="settings_dark_theme_title">Темная тема</string>
     <string name="settings_dark_theme_on">Включена</string>

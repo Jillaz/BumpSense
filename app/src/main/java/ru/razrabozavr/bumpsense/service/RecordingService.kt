@@ -111,6 +111,8 @@ class RecordingService : Service() {
                 currentTrack = track // ✅ Сохраняем ссылку на текущий трек
 
                 val app = application as BumpSenseApp
+                locationClient.minUpdateDistanceMeters = app.appPreferences.minUpdateDistanceMeters
+                Log.d("BumpSense", "📏 Мин. смещение для записи: ${app.appPreferences.minUpdateDistanceMeters} м")
                 currentTrackId = app.trackRepository.insertTrack(track)
                 dataCollector.setTrackId(currentTrackId)
                 bumpIndexCalculator.reset()
