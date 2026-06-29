@@ -43,7 +43,6 @@ import ru.razrabozavr.bumpsense.presentation.components.AccelerometerPanel
 import ru.razrabozavr.bumpsense.presentation.components.AppMenu
 import ru.razrabozavr.bumpsense.presentation.components.ControlPanel
 import ru.razrabozavr.bumpsense.presentation.components.SettingsInfoPanel
-import ru.razrabozavr.bumpsense.presentation.components.TopStatusBar
 import ru.razrabozavr.bumpsense.presentation.permissions.PermissionHandler
 import ru.razrabozavr.bumpsense.presentation.settings.SettingsScreen
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditScreen
