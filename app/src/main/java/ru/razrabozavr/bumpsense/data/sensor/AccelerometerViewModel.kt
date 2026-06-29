@@ -1,6 +1,7 @@
 package ru.razrabozavr.bumpsense.data.sensor
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -32,13 +33,16 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
 
     private var maxBumpIndex = 0
     private var maxBumpIndexResetJob: Job? = null
+    private var collectingJob: Job? = null
 
     init {
         startCollecting()
     }
 
     private fun startCollecting() {
-        accelerometerClient.getAccelerationUpdates()
+        collectingJob?.cancel()
+
+        collectingJob = accelerometerClient.getAccelerationUpdates()
             .onEach { magnitude ->
                 val bumpIndex = bumpIndexCalculator.addSample(magnitude)
                 updateMaxBumpIndex(bumpIndex)
@@ -56,6 +60,13 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
                 _accelerometerData.update { AccelerometerData(isAvailable = false) }
             }
             .launchIn(viewModelScope)
+    }
+
+    // ✅ НОВЫЙ МЕТОД: Остановка сбора данных
+    fun stopCollecting() {
+        collectingJob?.cancel()
+        collectingJob = null
+        Log.d("AccelerometerViewModel", "⏹️ Сбор данных остановлен")
     }
 
     private fun updateMaxBumpIndex(newBumpIndex: Int) {
@@ -82,5 +93,6 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
     override fun onCleared() {
         super.onCleared()
         maxBumpIndexResetJob?.cancel()
+        collectingJob?.cancel()
     }
 }

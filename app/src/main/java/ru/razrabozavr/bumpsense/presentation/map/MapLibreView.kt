@@ -1,9 +1,9 @@
 package ru.razrabozavr.bumpsense.presentation.map
 
-import android.graphics.Color
 import android.location.Location
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,11 +26,7 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
-import org.maplibre.geojson.LineString
-import org.maplibre.geojson.Point
-import ru.razrabozavr.bumpsense.domain.model.BumpLevel
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 
 @Composable
@@ -46,17 +42,19 @@ fun MapLibreView(
     onCameraMove: (CameraBounds) -> Unit = {}
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
+    var mapView by remember { mutableStateOf<MapView?>(null) }
 
     AndroidView(
         modifier = modifier,
         factory = { context ->
             Log.d("BumpSense", "🗺️ Создание MapView...")
             MapView(context).apply {
+                mapView = this
                 onCreate(null)
                 getMapAsync { map ->
                     Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
 
-                    map.setStyle(Style.Builder().fromUri("asset://osm_style.json")) { loadedStyle ->
+                    map.setStyle(Style.Builder().fromUri(MapConstants.STYLE_URI)) { loadedStyle ->
                         Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
                         initializeMapLayers(loadedStyle)
                         enableLocationComponent(this, map, loadedStyle)
@@ -110,12 +108,28 @@ fun MapLibreView(
                 }
             }
         },
-        update = { mapView ->
-            mapView.getMapAsync { map ->
+        update = { view ->
+            view.getMapAsync { map ->
                 updateTrackLayers(map, currentTrackPoints, historyTracks)
             }
         }
     )
+
+    // ✅ ИСПРАВЛЕНИЕ: Управление lifecycle MapView
+    DisposableEffect(Unit) {
+        onDispose {
+            mapView?.let { view ->
+                Log.d("BumpSense", "🗑️ MapView: onDestroy")
+                view.onDestroy()
+            }
+        }
+    }
+
+    // ✅ Вызов onResume/onPause через LaunchedEffect
+    LaunchedEffect(Unit) {
+        mapView?.onStart()
+        mapView?.onResume()
+    }
 
     // Авто-центрирование только когда autoFollow = true
     LaunchedEffect(autoFollow, currentLocation?.latitude, currentLocation?.longitude) {
@@ -126,11 +140,11 @@ fun MapLibreView(
             Log.d("BumpSense", "🔄 Авто-наведение: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
-                .zoom(16.0)
+                .zoom(MapConstants.DEFAULT_ZOOM)
                 .build()
             map.animateCamera(
                 CameraUpdateFactory.newCameraPosition(cameraPosition),
-                1000
+                MapConstants.ANIMATION_DURATION_MS
             )
         }
     }
@@ -154,11 +168,11 @@ fun MapLibreView(
             Log.d("BumpSense", "🎯 Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
-                .zoom(16.0)
+                .zoom(MapConstants.DEFAULT_ZOOM)
                 .build()
             map.animateCamera(
                 CameraUpdateFactory.newCameraPosition(cameraPosition),
-                1000
+                MapConstants.ANIMATION_DURATION_MS
             )
         }
     }
@@ -177,8 +191,8 @@ fun MapLibreView(
                 .build()
 
             map.animateCamera(
-                CameraUpdateFactory.newLatLngBounds(latLngBounds, 50),
-                1000
+                CameraUpdateFactory.newLatLngBounds(latLngBounds, MapConstants.BOUNDS_PADDING),
+                MapConstants.ANIMATION_DURATION_MS
             )
         } catch (e: Exception) {
             Log.e("BumpSense", "❌ Ошибка центрирования на bounds", e)
@@ -188,10 +202,10 @@ fun MapLibreView(
 
 private fun initializeMapLayers(style: Style) {
     try {
-        style.addSource(GeoJsonSource(CURRENT_TRACK_SOURCE_ID))
-        style.addSource(GeoJsonSource(HISTORY_TRACK_SOURCE_ID))
+        style.addSource(GeoJsonSource(MapConstants.CURRENT_TRACK_SOURCE_ID))
+        style.addSource(GeoJsonSource(MapConstants.HISTORY_TRACK_SOURCE_ID))
         style.addLayer(
-            LineLayer(HISTORY_TRACK_LAYER_ID, HISTORY_TRACK_SOURCE_ID).withProperties(
+            LineLayer(MapConstants.HISTORY_TRACK_LAYER_ID, MapConstants.HISTORY_TRACK_SOURCE_ID).withProperties(
                 PropertyFactory.lineWidth(5f),
                 PropertyFactory.lineOpacity(0.8f),
                 PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
@@ -201,7 +215,7 @@ private fun initializeMapLayers(style: Style) {
         )
 
         style.addLayer(
-            LineLayer(CURRENT_TRACK_LAYER_ID, CURRENT_TRACK_SOURCE_ID).withProperties(
+            LineLayer(MapConstants.CURRENT_TRACK_LAYER_ID, MapConstants.CURRENT_TRACK_SOURCE_ID).withProperties(
                 PropertyFactory.lineWidth(8f),
                 PropertyFactory.lineOpacity(1f),
                 PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
@@ -216,7 +230,6 @@ private fun initializeMapLayers(style: Style) {
     }
 }
 
-// ✅ ИСПРАВЛЕНО: функция принимает MapView для доступа к context
 private fun enableLocationComponent(
     mapView: MapView,
     mapLibreMap: MapLibreMap,
@@ -257,55 +270,22 @@ private fun updateTrackLayers(
 ) {
     mapLibreMap.getStyle { style ->
         try {
-            val currentTrackSource = style.getSourceAs<GeoJsonSource>(CURRENT_TRACK_SOURCE_ID)
+            val currentTrackSource = style.getSourceAs<GeoJsonSource>(MapConstants.CURRENT_TRACK_SOURCE_ID)
             if (currentTrackPoints.size > 1) {
-                val features = createColoredLineFeatures(currentTrackPoints)
+                // ✅ ИСПРАВЛЕНИЕ: Используем TrackFeatureBuilder вместо дублирования
+                val features = TrackFeatureBuilder.createColoredLineFeatures(currentTrackPoints)
                 currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(features))
             } else {
                 currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
             }
 
-            val historyTrackSource = style.getSourceAs<GeoJsonSource>(HISTORY_TRACK_SOURCE_ID)
+            val historyTrackSource = style.getSourceAs<GeoJsonSource>(MapConstants.HISTORY_TRACK_SOURCE_ID)
             val historyFeatures = historyTracks
                 .filter { it.size > 1 }
-                .flatMap { createColoredLineFeatures(it) }
+                .flatMap { TrackFeatureBuilder.createColoredLineFeatures(it) }
             historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyFeatures))
         } catch (e: Exception) {
             Log.e("BumpSense", "❌ Ошибка обновления слоев", e)
         }
     }
 }
-
-private fun createColoredLineFeatures(points: List<TrackPoint>): List<Feature> {
-    val features = mutableListOf<Feature>()
-    for (i in 0 until points.size - 1) {
-        val start = points[i]
-        val end = points[i + 1]
-
-        val lineString = LineString.fromLngLats(
-            listOf(
-                Point.fromLngLat(start.longitude, start.latitude),
-                Point.fromLngLat(end.longitude, end.latitude)
-            )
-        )
-
-        val bumpLevel = BumpLevel.fromIndex(start.bumpIndex)
-        val colorInt = Color.rgb(
-            (bumpLevel.color.red * 255).toInt(),
-            (bumpLevel.color.green * 255).toInt(),
-            (bumpLevel.color.blue * 255).toInt()
-        )
-        val colorHex = String.format("#%06X", (0xFFFFFF and colorInt))
-
-        val feature = Feature.fromGeometry(lineString)
-        feature.addStringProperty("color", colorHex)
-        features.add(feature)
-    }
-
-    return features
-}
-
-private const val CURRENT_TRACK_SOURCE_ID = "current-track-source"
-private const val HISTORY_TRACK_SOURCE_ID = "history-track-source"
-private const val CURRENT_TRACK_LAYER_ID = "current-track-layer"
-private const val HISTORY_TRACK_LAYER_ID = "history-track-layer"

@@ -8,11 +8,6 @@ import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 
 object GeoJsonMapper {
 
-    /**
-     * Конвертирует список треков в GeoJSON FeatureCollection.
-     * Каждый трек — отдельная Feature с метаданными в properties.
-     * Координаты сохраняются как [longitude, latitude, bumpIndex].
-     */
     fun tracksToGeoJson(tracks: List<Track>): String {
         val featureCollection = JSONObject()
         featureCollection.put("type", "FeatureCollection")
@@ -22,7 +17,6 @@ object GeoJsonMapper {
             val feature = JSONObject()
             feature.put("type", "Feature")
 
-            // Метаданные трека
             val properties = JSONObject()
             properties.put("trackName", track.name)
             properties.put("startTime", track.startTime)
@@ -30,7 +24,6 @@ object GeoJsonMapper {
             properties.put("distance", track.distance)
             feature.put("properties", properties)
 
-            // Геометрия: LineString с координатами [lon, lat, bumpIndex]
             val geometry = JSONObject()
             geometry.put("type", "LineString")
 
@@ -52,19 +45,10 @@ object GeoJsonMapper {
         return featureCollection.toString(2)
     }
 
-    /**
-     * Конвертирует один трек в GeoJSON FeatureCollection с одной Feature.
-     * Для обратной совместимости.
-     */
     fun trackToGeoJson(track: Track): String {
         return tracksToGeoJson(listOf(track))
     }
 
-    /**
-     * Парсит GeoJSON и возвращает список треков.
-     * Поддерживает как FeatureCollection (несколько треков),
-     * так и одиночную Feature (один трек).
-     */
     fun geoJsonToTracks(jsonString: String): List<Track> {
         try {
             val root = JSONObject(jsonString)
@@ -83,7 +67,7 @@ object GeoJsonMapper {
                         val track = parseFeatureToTrack(feature)
                         if (track != null) {
                             tracks.add(track)
-                            Log.d("GeoJsonMapper", "✅ Расаршен трек #${i+1}: ${track.points.size} точек")
+                            Log.d("GeoJsonMapper", "✅ Распаршен трек #${i+1}: ${track.points.size} точек")
                         } else {
                             Log.w("GeoJsonMapper", "⚠️ Не удалось распарсить трек #${i+1}")
                         }
@@ -106,9 +90,6 @@ object GeoJsonMapper {
         }
     }
 
-    /**
-     * Парсит одну Feature в Track.
-     */
     private fun parseFeatureToTrack(feature: JSONObject): Track? {
         return try {
             val properties = feature.optJSONObject("properties") ?: JSONObject()
@@ -126,8 +107,13 @@ object GeoJsonMapper {
                 val coord = coordinates.getJSONArray(i)
                 val longitude = coord.getDouble(0)
                 val latitude = coord.getDouble(1)
-                // bumpIndex хранится третьим значением в массиве координат
                 val bumpIndex = if (coord.length() > 2) coord.getInt(2) else 0
+
+                // ✅ ИСПРАВЛЕНИЕ: Валидация координат
+                if (!isValidCoordinate(latitude, longitude)) {
+                    Log.w("GeoJsonMapper", "⚠️ Некорректные координаты в точке #$i: lat=$latitude, lon=$longitude")
+                    continue
+                }
 
                 points.add(
                     TrackPoint(
@@ -142,6 +128,11 @@ object GeoJsonMapper {
                 )
             }
 
+            if (points.isEmpty()) {
+                Log.w("GeoJsonMapper", "⚠️ Трек не содержит валидных точек")
+                return null
+            }
+
             Track(
                 id = 0,
                 name = trackName,
@@ -151,14 +142,16 @@ object GeoJsonMapper {
                 points = points
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("GeoJsonMapper", "❌ Ошибка парсинга Feature: ${e.message}", e)
             null
         }
     }
 
-    /**
-     * Устаревший метод для обратной совместимости (возвращает только первый трек).
-     */
+    // ✅ НОВЫЙ МЕТОД: Валидация координат
+    private fun isValidCoordinate(latitude: Double, longitude: Double): Boolean {
+        return latitude in -90.0..90.0 && longitude in -180.0..180.0
+    }
+
     fun geoJsonToTrack(jsonString: String): Track? {
         return geoJsonToTracks(jsonString).firstOrNull()
     }

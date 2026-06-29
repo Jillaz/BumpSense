@@ -14,45 +14,31 @@ import kotlin.math.sqrt
 
 class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
 
+    // ✅ ИСПРАВЛЕНИЕ: Используем метод с @Transaction из DAO
     override fun getAllTracks(): Flow<List<Track>> {
-        return trackDao.getAllTracks().map { trackEntities ->
-            trackEntities.map { trackEntity ->
-                val points = trackDao.getTrackPoints(trackEntity.id)
-                trackEntity.toDomain(points)
-            }
+        return trackDao.getAllTracksWithPoints().map { trackEntities ->
+            trackEntities.map { it.toDomain() }
         }
     }
 
     override suspend fun getTrackById(id: Long): Track? {
-        val trackEntity = trackDao.getTrackById(id) ?: return null
-        val points = trackDao.getTrackPoints(id)
-        return trackEntity.toDomain(points)
+        return trackDao.getTrackByIdWithPoints(id)?.toDomain()
     }
 
     override suspend fun insertTrack(track: Track): Long {
         val trackEntity = track.toEntity()
-        val trackId = trackDao.insertTrack(trackEntity)
-
-        if (track.points.isNotEmpty()) {
-            val pointsWithTrackId = track.points.map {
-                it.copy(trackId = trackId).toEntity()
-            }
-            trackDao.insertTrackPoints(pointsWithTrackId)
+        val pointsWithTrackId = track.points.map {
+            it.copy(trackId = track.id).toEntity()
         }
 
-        return trackId
+        return trackDao.insertTrackWithPoints(trackEntity, pointsWithTrackId)
     }
 
+    // ✅ ИСПРАВЛЕНИЕ: Используем @Transaction для атомарности
     override suspend fun updateTrack(track: Track) {
-        trackDao.updateTrack(track.toEntity())
-        trackDao.deletePointsByTrackId(track.id)
-
-        if (track.points.isNotEmpty()) {
-            val pointsWithTrackId = track.points.map {
-                it.copy(trackId = track.id).toEntity()
-            }
-            trackDao.insertTrackPoints(pointsWithTrackId)
-        }
+        trackDao.updateTrackWithPoints(track.toEntity(), track.points.map {
+            it.copy(trackId = track.id).toEntity()
+        })
     }
 
     override suspend fun deleteTrack(id: Long) {
