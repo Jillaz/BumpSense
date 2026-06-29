@@ -29,6 +29,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,16 +51,33 @@ import java.util.Locale
 import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.domain.model.Track
 
+// ✅ Новый enum для вкладок
+enum class TrackListTab {
+    ALL,        // Все треки из базы
+    VISIBLE     // Только треки в области видимости карты
+}
+
+// ✅ Обновлённое состояние с поддержкой вкладок
 data class TrackEditUiState(
-    val tracks: List<Track> = emptyList(),
+    val allTracks: List<Track> = emptyList(),
+    val visibleTracks: List<Track> = emptyList(),
+    val currentTab: TrackListTab = TrackListTab.ALL,
     val focusedTrackId: Long? = null
-)
+) {
+    // Удобный геттер для текущего списка треков
+    val currentTracks: List<Track>
+        get() = when (currentTab) {
+            TrackListTab.ALL -> allTracks
+            TrackListTab.VISIBLE -> visibleTracks
+        }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackEditScreen(
     uiState: TrackEditUiState,
     onBackClick: () -> Unit,
+    onTabChange: (TrackListTab) -> Unit,  // ✅ Новый callback
     onTrackClick: (Long) -> Unit,
     onDeleteClick: (Track) -> Unit,
     onDeleteConfirm: () -> Unit,
@@ -105,6 +124,40 @@ fun TrackEditScreen(
                     )
                 }
 
+                // ✅ Вкладки
+                TabRow(
+                    selectedTabIndex = when (uiState.currentTab) {
+                        TrackListTab.ALL -> 0
+                        TrackListTab.VISIBLE -> 1
+                    },
+                    modifier = Modifier.height(36.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Tab(
+                        selected = uiState.currentTab == TrackListTab.ALL,
+                        onClick = { onTabChange(TrackListTab.ALL) },
+                        text = {
+                            Text(
+                                text = "Все треки (${uiState.allTracks.size})",
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = uiState.currentTab == TrackListTab.VISIBLE,
+                        onClick = { onTabChange(TrackListTab.VISIBLE) },
+                        text = {
+                            Text(
+                                text = "На карте (${uiState.visibleTracks.size})",
+                                fontSize = 11.sp,
+                                maxLines = 1
+                            )
+                        }
+                    )
+                }
+
                 // Разделитель
                 Box(
                     modifier = Modifier
@@ -114,7 +167,7 @@ fun TrackEditScreen(
                 )
 
                 // Содержимое
-                if (uiState.tracks.isEmpty()) {
+                if (uiState.currentTracks.isEmpty()) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -130,7 +183,10 @@ fun TrackEditScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = stringResource(R.string.edit_tracks_empty),
+                            text = if (uiState.currentTab == TrackListTab.VISIBLE)
+                                "Нет треков в видимой области"
+                            else
+                                stringResource(R.string.edit_tracks_empty),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -141,7 +197,7 @@ fun TrackEditScreen(
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        items(uiState.tracks, key = { it.id }) { track ->
+                        items(uiState.currentTracks, key = { it.id }) { track ->
                             TrackItem(
                                 track = track,
                                 isFocused = uiState.focusedTrackId == track.id,

@@ -41,8 +41,9 @@ fun MapLibreView(
     currentLocation: Location? = null,
     centerTrigger: Int = 0,
     autoFollow: Boolean = false,
-    cameraBounds: CameraBounds? = null,  // ✅ Новый параметр
-    onMapReady: (MapLibreMap) -> Unit = {}
+    cameraBounds: CameraBounds? = null,
+    onMapReady: (MapLibreMap) -> Unit = {},
+    onCameraMove: (CameraBounds) -> Unit = {}  // ✅ Новый параметр
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
 
@@ -53,7 +54,7 @@ fun MapLibreView(
             MapView(context).apply {
                 onCreate(null)
                 getMapAsync { map ->
-                    Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
+                    Log.d("BumpSense", "️ MapView создан, загрузка стиля из assets...")
 
                     map.setStyle(Style.Builder().fromUri("asset://osm_style.json")) { loadedStyle ->
                         Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
@@ -61,6 +62,46 @@ fun MapLibreView(
                         enableLocationComponent(this, map, loadedStyle)
                         mapLibreMap = map
                         onMapReady(map)
+
+                        // ✅ Listener движения камеры
+                        map.addOnCameraMoveListener {
+                            val projection = map.projection
+                            val visibleRegion = projection.visibleRegion
+
+                            val nearLeft = visibleRegion.nearLeft ?: return@addOnCameraMoveListener
+                            val nearRight = visibleRegion.nearRight ?: return@addOnCameraMoveListener
+                            val farLeft = visibleRegion.farLeft ?: return@addOnCameraMoveListener
+                            val farRight = visibleRegion.farRight ?: return@addOnCameraMoveListener
+
+                            val bounds = CameraBounds(
+                                minLat = minOf(
+                                    nearLeft.latitude,
+                                    nearRight.latitude,
+                                    farLeft.latitude,
+                                    farRight.latitude
+                                ),
+                                maxLat = maxOf(
+                                    nearLeft.latitude,
+                                    nearRight.latitude,
+                                    farLeft.latitude,
+                                    farRight.latitude
+                                ),
+                                minLon = minOf(
+                                    nearLeft.longitude,
+                                    nearRight.longitude,
+                                    farLeft.longitude,
+                                    farRight.longitude
+                                ),
+                                maxLon = maxOf(
+                                    nearLeft.longitude,
+                                    nearRight.longitude,
+                                    farLeft.longitude,
+                                    farRight.longitude
+                                )
+                            )
+
+                            onCameraMove(bounds)
+                        }
                     }
                 }
             }
@@ -106,7 +147,7 @@ fun MapLibreView(
                 return@LaunchedEffect
             }
 
-            Log.d("BumpSense", "🎯 Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", " Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)
@@ -118,7 +159,7 @@ fun MapLibreView(
         }
     }
 
-    // ✅ Центрирование на области трека
+    // Центрирование на области трека
     LaunchedEffect(cameraBounds) {
         val bounds = cameraBounds ?: return@LaunchedEffect
         val map = mapLibreMap ?: return@LaunchedEffect
@@ -145,7 +186,6 @@ private fun initializeMapLayers(style: Style) {
     try {
         style.addSource(GeoJsonSource(CURRENT_TRACK_SOURCE_ID))
         style.addSource(GeoJsonSource(HISTORY_TRACK_SOURCE_ID))
-
         style.addLayer(
             LineLayer(HISTORY_TRACK_LAYER_ID, HISTORY_TRACK_SOURCE_ID).withProperties(
                 PropertyFactory.lineWidth(5f),
@@ -179,7 +219,6 @@ private fun enableLocationComponent(
 ) {
     try {
         val locationComponent = mapLibreMap.locationComponent
-
         locationComponent.activateLocationComponent(
             LocationComponentActivationOptions.builder(mapView.context, style)
                 .useDefaultLocationEngine(true)
@@ -234,7 +273,6 @@ private fun updateTrackLayers(
 
 private fun createColoredLineFeatures(points: List<TrackPoint>): List<Feature> {
     val features = mutableListOf<Feature>()
-
     for (i in 0 until points.size - 1) {
         val start = points[i]
         val end = points[i + 1]

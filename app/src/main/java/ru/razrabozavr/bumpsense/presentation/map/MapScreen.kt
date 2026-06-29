@@ -65,7 +65,6 @@ fun MapScreen(
     val isEditMode by viewModel.isEditMode.collectAsState()
     val cameraBounds by viewModel.cameraBounds.collectAsState()
 
-    // Настройки
     val settingsState by viewModel.settingsState.collectAsState()
     val isSettingsMode by viewModel.isSettingsMode.collectAsState()
 
@@ -163,10 +162,10 @@ fun MapScreen(
                 currentLocation = uiState.currentLocation,
                 centerTrigger = centerTrigger,
                 autoFollow = autoFollow,
-                cameraBounds = cameraBounds
+                cameraBounds = cameraBounds,
+                onCameraMove = { bounds -> viewModel.updateVisibleArea(bounds) }  // ✅ Новый параметр
             )
 
-            // ✅ Левая колонка: панель акселерометра + панель настроек
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -181,7 +180,6 @@ fun MapScreen(
                     modifier = Modifier.width(120.dp)
                 )
 
-                // ✅ Новая панель с текущими значениями настроек
                 SettingsInfoPanel(
                     settingsState = settingsState,
                     modifier = Modifier.width(120.dp)
@@ -232,6 +230,7 @@ fun MapScreen(
                 TrackEditScreen(
                     uiState = trackEditState,
                     onBackClick = { viewModel.exitEditMode() },
+                    onTabChange = { tab -> viewModel.selectTrackTab(tab) },  // ✅ Новый параметр
                     onTrackClick = { trackId -> viewModel.focusOnTrack(trackId) },
                     onDeleteClick = { track -> viewModel.deleteTrack(track) },
                     onDeleteConfirm = { },
@@ -252,7 +251,6 @@ fun MapScreen(
             }
         }
 
-        // Диалог экспорта
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
@@ -291,7 +289,6 @@ fun MapScreen(
             )
         }
 
-        // Диалог очистки БД
         if (showClearDbDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowClearDbDialog(false) },
@@ -318,7 +315,6 @@ fun MapScreen(
             )
         }
 
-        // Диалог "О программе"
         if (showAboutDialog) {
             AlertDialog(
                 onDismissRequest = { showAboutDialog = false },
