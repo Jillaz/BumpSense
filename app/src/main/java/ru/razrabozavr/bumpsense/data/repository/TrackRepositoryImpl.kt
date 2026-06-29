@@ -3,7 +3,6 @@ package ru.razrabozavr.bumpsense.data.repository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
-import ru.razrabozavr.bumpsense.data.local.mapper.toDomain
 import ru.razrabozavr.bumpsense.data.local.mapper.toEntity
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.repository.TrackRepository
@@ -14,17 +13,19 @@ import kotlin.math.sqrt
 
 class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
 
-    // ✅ ИСПРАВЛЕНИЕ: Используем метод с @Transaction из DAO
+    // ✅ ИСПРАВЛЕНИЕ: Загружаем треки с точками одним запросом (нет N+1)
     override fun getAllTracks(): Flow<List<Track>> {
-        return trackDao.getAllTracksWithPoints().map { trackEntities ->
-            trackEntities.map { it.toDomain() }
+        return trackDao.getAllTracksWithPoints().map { tracksWithPoints ->
+            tracksWithPoints.map { it.toDomain() }
         }
     }
 
+    // ✅ ИСПРАВЛЕНИЕ: Загружаем трек с точками одним запросом
     override suspend fun getTrackById(id: Long): Track? {
         return trackDao.getTrackByIdWithPoints(id)?.toDomain()
     }
 
+    // ✅ ИСПРАВЛЕНИЕ: Вставляем трек и точки в одной транзакции
     override suspend fun insertTrack(track: Track): Long {
         val trackEntity = track.toEntity()
         val pointsWithTrackId = track.points.map {
@@ -34,11 +35,12 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         return trackDao.insertTrackWithPoints(trackEntity, pointsWithTrackId)
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Используем @Transaction для атомарности
+    // ✅ ИСПРАВЛЕНИЕ: Обновляем трек и точки в одной транзакции (атомарно)
     override suspend fun updateTrack(track: Track) {
-        trackDao.updateTrackWithPoints(track.toEntity(), track.points.map {
-            it.copy(trackId = track.id).toEntity()
-        })
+        trackDao.updateTrackWithPoints(
+            track.toEntity(),
+            track.points.map { it.copy(trackId = track.id).toEntity() }
+        )
     }
 
     override suspend fun deleteTrack(id: Long) {

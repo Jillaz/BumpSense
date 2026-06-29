@@ -17,20 +17,12 @@ import ru.razrabozavr.bumpsense.domain.model.Track
 @Dao
 interface TrackDao {
 
-    @Query("SELECT * FROM tracks ORDER BY id DESC")
-    fun getAllTracks(): Flow<List<TrackEntity>>
-
-    @Query("SELECT * FROM tracks WHERE id = :id")
-    suspend fun getTrackById(id: Long): TrackEntity?
-
-    @Query("SELECT * FROM track_points WHERE trackId = :trackId ORDER BY timestamp ASC")
-    suspend fun getTrackPoints(trackId: Long): List<TrackPointEntity>
-
-    // ✅ Загрузка треков с точками в одном запросе
+    // ✅ Загрузка всех треков с точками одним запросом (решение N+1)
     @Transaction
     @Query("SELECT * FROM tracks ORDER BY id DESC")
     fun getAllTracksWithPoints(): Flow<List<TrackWithPoints>>
 
+    // ✅ Загрузка одного трека с точками одним запросом
     @Transaction
     @Query("SELECT * FROM tracks WHERE id = :id")
     suspend fun getTrackByIdWithPoints(id: Long): TrackWithPoints?
@@ -69,6 +61,7 @@ interface TrackDao {
     @Query("DELETE FROM tracks")
     suspend fun deleteAllTracks()
 
+    // ✅ Атомарная вставка трека с точками
     @Transaction
     suspend fun insertTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>): Long {
         val trackId = insertTrack(track)
@@ -98,7 +91,6 @@ data class TrackWithPoints(
     )
     val points: List<TrackPointEntity>
 ) {
-    // ✅ ИСПРАВЛЕНИЕ: Используем extension-функцию toDomain для TrackEntity
     fun toDomain(): Track {
         return track.toDomain(points)
     }
