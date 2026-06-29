@@ -54,7 +54,7 @@ fun MapLibreView(
             MapView(context).apply {
                 onCreate(null)
                 getMapAsync { map ->
-                    Log.d("BumpSense", "️ MapView создан, загрузка стиля из assets...")
+                    Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
 
                     map.setStyle(Style.Builder().fromUri("asset://osm_style.json")) { loadedStyle ->
                         Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
@@ -65,42 +65,46 @@ fun MapLibreView(
 
                         // ✅ Listener движения камеры
                         map.addOnCameraMoveListener {
-                            val projection = map.projection
-                            val visibleRegion = projection.visibleRegion
+                            try {
+                                val projection = map.projection
+                                val visibleRegion = projection.visibleRegion
 
-                            val nearLeft = visibleRegion.nearLeft ?: return@addOnCameraMoveListener
-                            val nearRight = visibleRegion.nearRight ?: return@addOnCameraMoveListener
-                            val farLeft = visibleRegion.farLeft ?: return@addOnCameraMoveListener
-                            val farRight = visibleRegion.farRight ?: return@addOnCameraMoveListener
+                                val nearLeft = visibleRegion.nearLeft ?: return@addOnCameraMoveListener
+                                val nearRight = visibleRegion.nearRight ?: return@addOnCameraMoveListener
+                                val farLeft = visibleRegion.farLeft ?: return@addOnCameraMoveListener
+                                val farRight = visibleRegion.farRight ?: return@addOnCameraMoveListener
 
-                            val bounds = CameraBounds(
-                                minLat = minOf(
-                                    nearLeft.latitude,
-                                    nearRight.latitude,
-                                    farLeft.latitude,
-                                    farRight.latitude
-                                ),
-                                maxLat = maxOf(
-                                    nearLeft.latitude,
-                                    nearRight.latitude,
-                                    farLeft.latitude,
-                                    farRight.latitude
-                                ),
-                                minLon = minOf(
-                                    nearLeft.longitude,
-                                    nearRight.longitude,
-                                    farLeft.longitude,
-                                    farRight.longitude
-                                ),
-                                maxLon = maxOf(
-                                    nearLeft.longitude,
-                                    nearRight.longitude,
-                                    farLeft.longitude,
-                                    farRight.longitude
+                                val bounds = CameraBounds(
+                                    minLat = minOf(
+                                        nearLeft.latitude,
+                                        nearRight.latitude,
+                                        farLeft.latitude,
+                                        farRight.latitude
+                                    ),
+                                    maxLat = maxOf(
+                                        nearLeft.latitude,
+                                        nearRight.latitude,
+                                        farLeft.latitude,
+                                        farRight.latitude
+                                    ),
+                                    minLon = minOf(
+                                        nearLeft.longitude,
+                                        nearRight.longitude,
+                                        farLeft.longitude,
+                                        farRight.longitude
+                                    ),
+                                    maxLon = maxOf(
+                                        nearLeft.longitude,
+                                        nearRight.longitude,
+                                        farLeft.longitude,
+                                        farRight.longitude
+                                    )
                                 )
-                            )
 
-                            onCameraMove(bounds)
+                                onCameraMove(bounds)
+                            } catch (e: Exception) {
+                                Log.e("BumpSense", "❌ Ошибка в camera move listener", e)
+                            }
                         }
                     }
                 }
@@ -147,7 +151,7 @@ fun MapLibreView(
                 return@LaunchedEffect
             }
 
-            Log.d("BumpSense", " Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
+            Log.d("BumpSense", "🎯 Центрирование: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
                 .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(16.0)
@@ -261,9 +265,9 @@ private fun updateTrackLayers(
             }
 
             val historyTrackSource = style.getSourceAs<GeoJsonSource>(HISTORY_TRACK_SOURCE_ID)
-            val historyFeatures = historyTracks.flatMap { points ->
-                if (points.size > 1) createColoredLineFeatures(points) else emptyList()
-            }
+            val historyFeatures = historyTracks
+                .filter { it.size > 1 }
+                .flatMap { createColoredLineFeatures(it) }
             historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyFeatures))
         } catch (e: Exception) {
             Log.e("BumpSense", "❌ Ошибка обновления слоев", e)
