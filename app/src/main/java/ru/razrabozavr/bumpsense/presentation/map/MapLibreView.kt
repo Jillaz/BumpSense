@@ -43,7 +43,7 @@ fun MapLibreView(
     autoFollow: Boolean = false,
     cameraBounds: CameraBounds? = null,
     onMapReady: (MapLibreMap) -> Unit = {},
-    onCameraMove: (CameraBounds) -> Unit = {}  // ✅ Новый параметр
+    onCameraMove: (CameraBounds) -> Unit = {}
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
 
@@ -216,6 +216,7 @@ private fun initializeMapLayers(style: Style) {
     }
 }
 
+// ✅ ИСПРАВЛЕНО: функция принимает MapView для доступа к context
 private fun enableLocationComponent(
     mapView: MapView,
     mapLibreMap: MapLibreMap,
