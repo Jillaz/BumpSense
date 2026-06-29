@@ -30,7 +30,7 @@ class SettingsManager(context: Context) {
     private fun loadSettings(): SettingsState {
         return SettingsState(
             isDarkTheme = appPreferences.isDarkTheme,
-            gpsIntervalSeconds = appPreferences.gpsIntervalSeconds,
+            gpsIntervalSeconds = (appPreferences.gpsUpdateIntervalMs / 1000).toInt(),
             updateRadiusMeters = appPreferences.updateRadiusMeters,
             accelerometerThreshold = appPreferences.accelerometerThreshold,
             autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes,
@@ -52,7 +52,7 @@ class SettingsManager(context: Context) {
     }
 
     fun updateGpsInterval(seconds: Int) {
-        appPreferences.gpsIntervalSeconds = seconds
+        appPreferences.gpsUpdateIntervalMs = seconds * 1000L
         _settingsState.value = _settingsState.value.copy(gpsIntervalSeconds = seconds)
     }
 
