@@ -51,7 +51,7 @@ import java.util.Locale
 import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.domain.model.Track
 
-// ✅ Новый enum для вкладок
+// ✅ Enum для вкладок
 enum class TrackListTab {
     ALL,        // Все треки из базы
     VISIBLE     // Только треки в области видимости карты

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,9 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -41,11 +40,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.razrabozavr.bumpsense.R
 
+// ✅ Обновлённый SettingsState с полем автосохранения
 data class SettingsState(
     val isDarkTheme: Boolean,
     val gpsIntervalMs: Long,
     val updateRadiusMeters: Double,
-    val accelerometerThreshold: Float
+    val accelerometerThreshold: Float,
+    val autoSaveIntervalMinutes: Int  // ✅ Новое поле (5-60 минут)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +57,8 @@ fun SettingsScreen(
     onDarkThemeChange: (Boolean) -> Unit,
     onGpsIntervalChange: (Long) -> Unit,
     onUpdateRadiusChange: (Double) -> Unit,
-    onAccelerometerThresholdChange: (Float) -> Unit
+    onAccelerometerThresholdChange: (Float) -> Unit,
+    onAutoSaveIntervalChange: (Int) -> Unit  // ✅ Новый callback
 ) {
     Scaffold(
         topBar = {
@@ -92,13 +94,7 @@ fun SettingsScreen(
             ) {
                 Switch(
                     checked = settingsState.isDarkTheme,
-                    onCheckedChange = onDarkThemeChange,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.primary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
+                    onCheckedChange = onDarkThemeChange
                 )
             }
 
@@ -118,12 +114,7 @@ fun SettingsScreen(
                         },
                         valueRange = 1000f..10000f,
                         steps = 8,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Text(
                         text = stringResource(
@@ -153,12 +144,7 @@ fun SettingsScreen(
                         },
                         valueRange = 5f..50f,
                         steps = 9,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Text(
                         text = stringResource(
@@ -188,17 +174,42 @@ fun SettingsScreen(
                         },
                         valueRange = 1f..20f,
                         steps = 19,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                        )
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Text(
                         text = stringResource(
                             R.string.settings_accel_current,
                             accelSliderValue
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+            }
+
+            // ✅ Автосохранение треков (новая карточка)
+            var autoSaveValue by remember { mutableFloatStateOf(settingsState.autoSaveIntervalMinutes.toFloat()) }
+            SettingsCard(
+                icon = Icons.Default.Timer,
+                title = stringResource(R.string.settings_autosave_title),
+                description = stringResource(R.string.settings_autosave_description)
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Slider(
+                        value = autoSaveValue,
+                        onValueChange = {
+                            autoSaveValue = it
+                            onAutoSaveIntervalChange(it.toInt())
+                        },
+                        valueRange = 5f..60f,
+                        steps = 11,  // 12 позиций: 5, 10, 15... 60
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.settings_autosave_current,
+                            autoSaveValue.toInt()
                         ),
                         style = MaterialTheme.typography.bodySmall,
                         fontSize = 10.sp,

@@ -24,7 +24,8 @@ class LocationClient(private val context: Context) {
     fun getLocationUpdates(intervalMs: Long = 2000L): Flow<Location> = callbackFlow {
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs / 2)
-            .setWaitForAccurateLocation(false) // ✅ Не ждать точное местоположение (быстрее получаем)
+            .setWaitForAccurateLocation(false)
+            .setMinUpdateDistanceMeters(5f)  // ✅ Фильтр по расстоянию: точки только при движении ≥ 5 метров
             .build()
 
         val callback = object : LocationCallback() {

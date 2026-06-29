@@ -65,6 +65,7 @@ fun MapScreen(
     val isEditMode by viewModel.isEditMode.collectAsState()
     val cameraBounds by viewModel.cameraBounds.collectAsState()
 
+    // Настройки
     val settingsState by viewModel.settingsState.collectAsState()
     val isSettingsMode by viewModel.isSettingsMode.collectAsState()
 
@@ -166,6 +167,7 @@ fun MapScreen(
                 onCameraMove = { bounds -> viewModel.updateVisibleArea(bounds) }  // ✅ Новый параметр
             )
 
+            // Левая колонка: панель акселерометра + панель настроек
             Column(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -220,7 +222,7 @@ fun MapScreen(
                 ) {
                     Icon(
                         imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Мое местоположение",
+                        contentDescription = stringResource(R.string.my_location),
                         tint = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                 }
@@ -246,26 +248,31 @@ fun MapScreen(
                     onDarkThemeChange = { viewModel.updateDarkTheme(it) },
                     onGpsIntervalChange = { viewModel.updateGpsInterval(it) },
                     onUpdateRadiusChange = { viewModel.updateRadius(it) },
-                    onAccelerometerThresholdChange = { viewModel.updateAccelerometerThreshold(it) }
+                    onAccelerometerThresholdChange = { viewModel.updateAccelerometerThreshold(it) },
+                    onAutoSaveIntervalChange = { minutes -> viewModel.updateAutoSaveInterval(minutes) }  // ✅ Новый параметр
                 )
             }
         }
 
+        // Диалог экспорта
         if (showExportDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowExportDialog(false) },
-                title = { Text("Экспорт всех треков") },
+                title = { Text(stringResource(R.string.dialog_export_title)) },
                 text = {
                     if (uiState.historyTracks.isEmpty()) {
-                        Text("Нет сохраненных треков для экспорта.")
+                        Text(stringResource(R.string.dialog_export_empty))
                     } else {
                         val totalPoints = uiState.historyTracks.sumOf { it.size }
+                        val warning = if (uiState.isRecording)
+                            stringResource(R.string.dialog_export_warning)
+                        else ""
                         Text(
-                            "Будут экспортированы все треки (${uiState.historyTracks.size} треков, " +
-                                    "$totalPoints точек) в формате GeoJSON.\n\n" +
-                                    if (uiState.isRecording)
-                                        "⚠️ Текущая запись будет остановлена перед экспортом."
-                                    else ""
+                            stringResource(
+                                R.string.dialog_export_confirm,
+                                uiState.historyTracks.size,
+                                totalPoints
+                            ) + warning
                         )
                     }
                 },
@@ -278,43 +285,40 @@ fun MapScreen(
                             }
                         }
                     ) {
-                        Text("Экспортировать")
+                        Text(stringResource(R.string.button_export))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.setShowExportDialog(false) }) {
-                        Text("Отмена")
+                        Text(stringResource(R.string.button_cancel))
                     }
                 }
             )
         }
 
+        // Диалог очистки БД
         if (showClearDbDialog) {
             AlertDialog(
                 onDismissRequest = { viewModel.setShowClearDbDialog(false) },
-                title = { Text("Очистка базы данных") },
-                text = {
-                    Text(
-                        "Вы уверены, что хотите удалить ВСЕ сохраненные треки? " +
-                                "Это действие нельзя отменить."
-                    )
-                },
+                title = { Text(stringResource(R.string.dialog_clear_db_title)) },
+                text = { Text(stringResource(R.string.dialog_clear_db_message)) },
                 confirmButton = {
                     TextButton(onClick = { viewModel.clearDatabase() }) {
                         Text(
-                            "Удалить всё",
+                            stringResource(R.string.button_delete_all),
                             color = MaterialTheme.colorScheme.error
                         )
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { viewModel.setShowClearDbDialog(false) }) {
-                        Text("Отмена")
+                        Text(stringResource(R.string.button_cancel))
                     }
                 }
             )
         }
 
+        // Диалог "О программе"
         if (showAboutDialog) {
             AlertDialog(
                 onDismissRequest = { showAboutDialog = false },
@@ -327,7 +331,7 @@ fun MapScreen(
                 },
                 confirmButton = {
                     TextButton(onClick = { showAboutDialog = false }) {
-                        Text("Закрыть")
+                        Text(stringResource(R.string.button_close))
                     }
                 }
             )

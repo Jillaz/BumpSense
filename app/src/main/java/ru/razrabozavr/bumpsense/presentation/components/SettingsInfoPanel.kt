@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Radar
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +74,15 @@ fun SettingsInfoPanel(
                 icon = Icons.Default.Vibration,
                 label = "Порог:",
                 value = "%.1f м/с²".format(settingsState.accelerometerThreshold)
+            )
+
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // ✅ Автосохранение треков
+            InfoRow(
+                icon = Icons.Default.Timer,
+                label = "Автосохр:",
+                value = "${settingsState.autoSaveIntervalMinutes} мин"
             )
         }
     }

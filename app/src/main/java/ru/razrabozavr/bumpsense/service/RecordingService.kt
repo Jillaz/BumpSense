@@ -14,9 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
 import ru.razrabozavr.bumpsense.R
@@ -41,15 +43,20 @@ class RecordingService : Service() {
     private lateinit var bumpIndexCalculator: BumpIndexCalculator
     private lateinit var dataCollector: RecordingDataCollector
 
-    // ✅ WakeLock для удержания CPU активным во время записи
+    // WakeLock для удержания CPU активным во время записи
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // Таймер автосохранения
+    private var autoSaveJob: Job? = null
+    private var currentTrackStartTime: Long = 0L
+
     private var currentTrackId: Long = 0L
+    private var currentTrack: Track? = null // ✅ Хранит метаданные текущего трека (имя, время начала)
     private val trackPoints = mutableListOf<TrackPoint>()
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("BumpSense", " RecordingService: onCreate")
+        Log.d("BumpSense", "🔧 RecordingService: onCreate")
 
         val app = application as BumpSenseApp
         locationClient = LocationClient(this)
@@ -57,13 +64,13 @@ class RecordingService : Service() {
         bumpIndexCalculator = BumpIndexCalculator()
         dataCollector = RecordingDataCollector(locationClient, accelerometerClient, bumpIndexCalculator)
 
-        // ✅ Инициализация WakeLock
+        // Инициализация WakeLock
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "BumpSense::RecordingWakeLock"
         ).apply {
-            setReferenceCounted(false) // Упрощает управление (не нужно считать acquire/release)
+            setReferenceCounted(false)
         }
     }
 
@@ -90,19 +97,18 @@ class RecordingService : Service() {
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-        // ✅ Приобретаем WakeLock на 10 минут (продлеваем при каждом сохранении)
+        // Приобретаем WakeLock на 10 минут
         wakeLock?.acquire(10 * 60 * 1000L)
         Log.d("BumpSense", "🔒 WakeLock acquired (10 минут)")
 
         recordingJob = serviceScope.launch {
             try {
-                val trackName = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
-                    .format(Date())
-
+                val trackName = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date())
                 val track = Track(
                     name = trackName,
                     startTime = System.currentTimeMillis()
                 )
+                currentTrack = track // ✅ Сохраняем ссылку на текущий трек
 
                 val app = application as BumpSenseApp
                 currentTrackId = app.trackRepository.insertTrack(track)
@@ -110,7 +116,14 @@ class RecordingService : Service() {
                 bumpIndexCalculator.reset()
                 trackPoints.clear()
 
-                Log.d("BumpSense", "🎬 RecordingService: трек создан, ID=$currentTrackId")
+                // Запоминаем время начала текущего трека
+                currentTrackStartTime = System.currentTimeMillis()
+
+                // Запускаем таймер автосохранения
+                val autoSaveInterval = app.appPreferences.autoSaveIntervalMinutes
+                startAutoSaveTimer(autoSaveInterval)
+
+                Log.d("BumpSense", "🎬 RecordingService: трек создан, ID=$currentTrackId, автосохранение каждые $autoSaveInterval мин")
 
                 dataCollector.collectTrackPoints()
                     .onEach { trackPoint ->
@@ -128,15 +141,18 @@ class RecordingService : Service() {
 
                         // Сохраняем в БД каждые 5 точек
                         if (trackPoints.size % 5 == 0) {
-                            // ✅ Продлеваем WakeLock ещё на 10 минут
+                            // Продлеваем WakeLock ещё на 10 минут
                             wakeLock?.acquire(10 * 60 * 1000L)
 
-                            app.trackRepository.insertTrack(
-                                track.copy(
-                                    id = currentTrackId,
-                                    points = trackPoints.toList()
+                            // ✅ Используем currentTrack, чтобы брать актуальные name и startTime
+                            currentTrack?.let { t ->
+                                app.trackRepository.insertTrack(
+                                    t.copy(
+                                        id = currentTrackId,
+                                        points = trackPoints.toList()
+                                    )
                                 )
-                            )
+                            }
                             Log.d("BumpSense", "💾 RecordingService: сохранено в БД, точек=${trackPoints.size}, WakeLock продлён")
                         }
 
@@ -160,13 +176,78 @@ class RecordingService : Service() {
         }
     }
 
+    // Запуск таймера автосохранения
+    private fun startAutoSaveTimer(intervalMinutes: Int) {
+        autoSaveJob?.cancel()
+
+        if (intervalMinutes <= 0) {
+            Log.d("BumpSense", "♾️ Автосохранение отключено")
+            return
+        }
+
+        Log.d("BumpSense", "⏱️ Автосохранение каждые $intervalMinutes минут")
+
+        autoSaveJob = serviceScope.launch {
+            while (isActive) {
+                delay(intervalMinutes * 60 * 1000L)
+                Log.d("BumpSense", "⏱️ Автосохранение: ротация трека")
+                rotateTrack()
+            }
+        }
+    }
+
+    // Ротация трека: сохранение текущего и создание нового
+    private suspend fun rotateTrack() {
+        val app = application as BumpSenseApp
+
+        // 1. Сохраняем текущий трек с endTime
+        currentTrack?.let { t ->
+            val finishedTrack = t.copy(
+                id = currentTrackId,
+                endTime = System.currentTimeMillis(),
+                points = trackPoints.toList()
+            )
+            app.trackRepository.insertTrack(finishedTrack)
+        }
+
+        val savedPointsCount = trackPoints.size
+        Log.d("BumpSense", "💾 Автосохранение: трек #$currentTrackId сохранён, точек=$savedPointsCount")
+
+        // 2. Создаём новый трек
+        currentTrackStartTime = System.currentTimeMillis()
+        val newTrack = Track(
+            name = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+                .format(Date(currentTrackStartTime)),
+            startTime = currentTrackStartTime
+        )
+        currentTrack = newTrack // ✅ Обновляем ссылку на новый трек
+        currentTrackId = app.trackRepository.insertTrack(newTrack)
+        dataCollector.setTrackId(currentTrackId)
+        trackPoints.clear()
+
+        // 3. Продлеваем WakeLock
+        wakeLock?.acquire(10 * 60 * 1000L)
+
+        Log.d("BumpSense", "🆕 Автосохранение: создан новый трек #$currentTrackId")
+
+        // 4. Уведомляем UI о ротации
+        sendBroadcast(Intent(ACTION_TRACK_ROTATED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_PREVIOUS_TRACK_POINTS, savedPointsCount)
+        })
+    }
+
     private fun stopRecording() {
         Log.d("BumpSense", "⏹️ RecordingService: stopRecording")
 
         recordingJob?.cancel()
         recordingJob = null
 
-        // ✅ Освобождаем WakeLock
+        // Отменяем таймер автосохранения
+        autoSaveJob?.cancel()
+        autoSaveJob = null
+
+        // Освобождаем WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 it.release()
@@ -182,7 +263,7 @@ class RecordingService : Service() {
                 val track = Track(
                     id = currentTrackId,
                     name = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date()),
-                    startTime = System.currentTimeMillis() - (trackPoints.size * 2000L),
+                    startTime = currentTrack?.startTime ?: (System.currentTimeMillis() - (trackPoints.size * 2000L)),
                     endTime = System.currentTimeMillis(),
                     points = trackPoints.toList()
                 )
@@ -219,7 +300,11 @@ class RecordingService : Service() {
         super.onDestroy()
         Log.d("BumpSense", "🔚 RecordingService: onDestroy")
 
-        // ✅ Гарантированное освобождение WakeLock
+        // Отменяем таймер автосохранения
+        autoSaveJob?.cancel()
+        autoSaveJob = null
+
+        // Гарантированное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 it.release()
@@ -235,10 +320,12 @@ class RecordingService : Service() {
         const val ACTION_STOP_RECORDING = "action_stop_recording"
         const val ACTION_TRACK_POINT_UPDATE = "action_track_point_update"
         const val ACTION_RECORDING_STOPPED = "action_recording_stopped"
+        const val ACTION_TRACK_ROTATED = "action_track_rotated"
 
         const val EXTRA_LATITUDE = "extra_latitude"
         const val EXTRA_LONGITUDE = "extra_longitude"
         const val EXTRA_BUMP_INDEX = "extra_bump_index"
+        const val EXTRA_PREVIOUS_TRACK_POINTS = "extra_previous_track_points"
 
         private const val NOTIFICATION_ID = 1
 
