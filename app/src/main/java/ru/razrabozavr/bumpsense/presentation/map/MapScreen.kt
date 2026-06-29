@@ -179,12 +179,12 @@ fun MapScreen(
                     bumpIndex = accelData.bumpIndex,
                     maxBumpIndex = accelData.maxBumpIndex,
                     isAvailable = accelData.isAvailable,
-                    modifier = Modifier.width(120.dp)
+                    modifier = Modifier.width(132.dp)
                 )
 
                 SettingsInfoPanel(
                     settingsState = settingsState,
-                    modifier = Modifier.width(120.dp)
+                    modifier = Modifier.width(132.dp)
                 )
             }
 
