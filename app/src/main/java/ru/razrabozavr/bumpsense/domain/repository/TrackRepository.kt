@@ -8,6 +8,10 @@ interface TrackRepository {
     fun getAllTracks(): Flow<List<Track>>
     suspend fun getTrackById(id: Long): Track?
     suspend fun insertTrack(track: Track): Long
+
+    // ✅ НОВЫЙ МЕТОД (Вариант З): Batch insert треков в одной транзакции
+    suspend fun insertTracksBatch(tracks: List<Track>)
+
     suspend fun updateTrack(track: Track)
     suspend fun deleteTrack(id: Long)
     suspend fun updateNearbyPoints(
@@ -18,9 +22,9 @@ interface TrackRepository {
     )
     suspend fun clearDatabase()
 
-    // ✅ НОВЫЙ МЕТОД (Вариант Б): Batch insert точек без удаления старых
+    // Batch insert точек без удаления старых
     suspend fun insertPoints(trackId: Long, points: List<TrackPoint>)
 
-    // ✅ НОВЫЙ МЕТОД (Вариант Б): Обновление метаданных трека без пересохранения точек
+    // Обновление метаданных трека без пересохранения точек
     suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double)
 }

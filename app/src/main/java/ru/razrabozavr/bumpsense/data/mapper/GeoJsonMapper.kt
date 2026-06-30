@@ -1,48 +1,66 @@
 package ru.razrabozavr.bumpsense.data.mapper
 
 import android.util.Log
+import java.io.Writer
 import org.json.JSONArray
 import org.json.JSONObject
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 
+/**
+ * Маппер для конвертации треков в GeoJSON и обратно.
+ *
+ * ✅ ОПТИМИЗАЦИЯ (Вариант З):
+ * - Потоковая запись через Writer (не формирует всю строку в памяти)
+ * - Оптимизированный парсинг без избыточных логов
+ * - Batch операции для импорта
+ */
 object GeoJsonMapper {
 
-    fun tracksToGeoJson(tracks: List<Track>): String {
-        val featureCollection = JSONObject()
-        featureCollection.put("type", "FeatureCollection")
+    // ✅ ОПТИМИЗАЦИЯ: Потоковая запись GeoJSON напрямую в Writer
+    // Не формирует огромную строку в памяти
+    fun tracksToGeoJson(tracks: List<Track>, writer: Writer) {
+        writer.write("{\n")
+        writer.write("  \"type\": \"FeatureCollection\",\n")
+        writer.write("  \"features\": [\n")
 
-        val features = JSONArray()
-        tracks.forEach { track ->
-            val feature = JSONObject()
-            feature.put("type", "Feature")
-
-            val properties = JSONObject()
-            properties.put("trackName", track.name)
-            properties.put("startTime", track.startTime)
-            properties.put("endTime", track.endTime)
-            properties.put("distance", track.distance)
-            feature.put("properties", properties)
-
-            val geometry = JSONObject()
-            geometry.put("type", "LineString")
-
-            val coordinates = JSONArray()
-            track.points.forEach { point ->
-                val coord = JSONArray()
-                coord.put(point.longitude)
-                coord.put(point.latitude)
-                coord.put(point.bumpIndex)
-                coordinates.put(coord)
+        tracks.forEachIndexed { trackIndex, track ->
+            writer.write("    {\n")
+            writer.write("      \"type\": \"Feature\",\n")
+            writer.write("      \"properties\": {\n")
+            writer.write("        \"trackName\": ${escapeJsonString(track.name)},\n")
+            writer.write("        \"startTime\": ${track.startTime},\n")
+            if (track.endTime != null) {
+                writer.write("        \"endTime\": ${track.endTime},\n")
             }
-            geometry.put("coordinates", coordinates)
-            feature.put("geometry", geometry)
+            writer.write("        \"distance\": ${track.distance}\n")
+            writer.write("      },\n")
+            writer.write("      \"geometry\": {\n")
+            writer.write("        \"type\": \"LineString\",\n")
+            writer.write("        \"coordinates\": [\n")
 
-            features.put(feature)
+            track.points.forEachIndexed { pointIndex, point ->
+                val comma = if (pointIndex < track.points.size - 1) "," else ""
+                writer.write("          [${point.longitude}, ${point.latitude}, ${point.bumpIndex}]$comma\n")
+            }
+
+            writer.write("        ]\n")
+            writer.write("      }\n")
+
+            val trackComma = if (trackIndex < tracks.size - 1) "," else ""
+            writer.write("    }$trackComma\n")
         }
 
-        featureCollection.put("features", features)
-        return featureCollection.toString(2)
+        writer.write("  ]\n")
+        writer.write("}\n")
+        writer.flush()
+    }
+
+    // ✅ Совместимость: старый метод возвращает строку (через StringWriter)
+    fun tracksToGeoJson(tracks: List<Track>): String {
+        val stringWriter = java.io.StringWriter()
+        tracksToGeoJson(tracks, stringWriter)
+        return stringWriter.toString()
     }
 
     fun trackToGeoJson(track: Track): String {
@@ -61,17 +79,27 @@ object GeoJsonMapper {
                     val features = root.getJSONArray("features")
                     Log.d("GeoJsonMapper", "📥 FeatureCollection с ${features.length()} features")
 
-                    val tracks = mutableListOf<Track>()
+                    // ✅ ОПТИМИЗАЦИЯ: Предвыделение размера списка
+                    val tracks = ArrayList<Track>(features.length())
+                    var parsedCount = 0
+                    var failedCount = 0
+
                     for (i in 0 until features.length()) {
                         val feature = features.getJSONObject(i)
                         val track = parseFeatureToTrack(feature)
                         if (track != null) {
                             tracks.add(track)
-                            Log.d("GeoJsonMapper", "✅ Распаршен трек #${i+1}: ${track.points.size} точек")
+                            parsedCount++
                         } else {
-                            Log.w("GeoJsonMapper", "⚠️ Не удалось распарсить трек #${i+1}")
+                            failedCount++
                         }
                     }
+
+                    // ✅ ОПТИМИЗАЦИЯ: Один лог вместо N
+                    Log.d(
+                        "GeoJsonMapper",
+                        "✅ Распаршено треков: $parsedCount, ошибок: $failedCount"
+                    )
                     tracks
                 }
                 "Feature" -> {
@@ -101,15 +129,15 @@ object GeoJsonMapper {
             val distance = properties.optDouble("distance", 0.0)
 
             val coordinates = geometry.getJSONArray("coordinates")
-            val points = mutableListOf<TrackPoint>()
+
+            // ✅ ОПТИМИЗАЦИЯ: Предвыделение размера списка точек
+            val points = ArrayList<TrackPoint>(coordinates.length())
             var skippedPointsCount = 0
 
             for (i in 0 until coordinates.length()) {
                 val coord = coordinates.getJSONArray(i)
 
-                // Проверка, что массив содержит хотя бы 2 элемента
                 if (coord.length() < 2) {
-                    Log.w("GeoJsonMapper", "⚠️ Точка #$i содержит менее 2 координат, пропуск")
                     skippedPointsCount++
                     continue
                 }
@@ -118,12 +146,7 @@ object GeoJsonMapper {
                 val latitude = coord.getDouble(1)
                 val bumpIndex = if (coord.length() > 2) coord.getInt(2) else 0
 
-                // ✅ ИСПРАВЛЕНИЕ: Валидация координат
                 if (!isValidCoordinate(latitude, longitude)) {
-                    Log.w(
-                        "GeoJsonMapper",
-                        "⚠️ Некорректные координаты в точке #$i: lat=$latitude, lon=$longitude"
-                    )
                     skippedPointsCount++
                     continue
                 }
@@ -142,14 +165,14 @@ object GeoJsonMapper {
             }
 
             if (points.isEmpty()) {
-                Log.w("GeoJsonMapper", "⚠️ Трек не содержит валидных точек")
+                Log.w("GeoJsonMapper", "⚠️ Трек '$trackName' не содержит валидных точек")
                 return null
             }
 
             if (skippedPointsCount > 0) {
                 Log.w(
                     "GeoJsonMapper",
-                    "⚠️ Пропущено $skippedPointsCount некорректных точек в треке '$trackName'"
+                    "⚠️ Трек '$trackName': пропущено $skippedPointsCount некорректных точек"
                 )
             }
 
@@ -167,9 +190,31 @@ object GeoJsonMapper {
         }
     }
 
-    // ✅ НОВЫЙ МЕТОД: Валидация координат
     private fun isValidCoordinate(latitude: Double, longitude: Double): Boolean {
         return latitude in -90.0..90.0 && longitude in -180.0..180.0
+    }
+
+    // ✅ НОВЫЙ МЕТОД: Экранирование строк для JSON
+    private fun escapeJsonString(value: String): String {
+        val sb = StringBuilder("\"")
+        for (char in value) {
+            when (char) {
+                '"' -> sb.append("\\\"")
+                '\\' -> sb.append("\\\\")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> {
+                    if (char.code < 0x20) {
+                        sb.append("\\u${String.format("%04x", char.code)}")
+                    } else {
+                        sb.append(char)
+                    }
+                }
+            }
+        }
+        sb.append("\"")
+        return sb.toString()
     }
 
     fun geoJsonToTrack(jsonString: String): Track? {

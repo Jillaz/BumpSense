@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import ru.razrabozavr.bumpsense.data.local.entity.TrackEntity
 import ru.razrabozavr.bumpsense.data.local.entity.TrackPointEntity
 import ru.razrabozavr.bumpsense.data.local.mapper.toDomain
+import ru.razrabozavr.bumpsense.data.local.mapper.toEntity
 import ru.razrabozavr.bumpsense.domain.model.Track
 
 @Dao
@@ -39,11 +40,9 @@ interface TrackDao {
     @Query("DELETE FROM track_points WHERE trackId = :trackId")
     suspend fun deletePointsByTrackId(trackId: Long)
 
-    // ✅ НОВЫЙ МЕТОД (Вариант Д): Batch UPDATE — один запрос вместо N
     @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id IN (:pointIds)")
     suspend fun updatePointsBumpIndexInBatch(pointIds: List<Long>, bumpIndex: Int)
 
-    // Оставлено для совместимости
     @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
     suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)
 
@@ -63,7 +62,6 @@ interface TrackDao {
     @Query("DELETE FROM tracks")
     suspend fun deleteAllTracks()
 
-    // ✅ НОВЫЙ МЕТОД (Вариант Б): Обновление метаданных трека без пересохранения точек
     @Query("UPDATE tracks SET endTime = :endTime, distance = :distance WHERE id = :trackId")
     suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double)
 
@@ -82,6 +80,21 @@ interface TrackDao {
         if (points.isNotEmpty()) {
             val pointsWithTrackId = points.map { it.copy(trackId = track.id) }
             insertTrackPoints(pointsWithTrackId)
+        }
+    }
+
+    // ✅ НОВЫЙ МЕТОД (Вариант З): Batch insert треков в одной транзакции
+    @Transaction
+    suspend fun insertTracksInTransaction(tracks: List<Track>) {
+        tracks.forEach { track ->
+            val trackEntity = track.toEntity()
+            val trackId = insertTrack(trackEntity)
+            if (track.points.isNotEmpty()) {
+                val pointsWithTrackId = track.points.map {
+                    it.copy(trackId = trackId).toEntity()
+                }
+                insertTrackPoints(pointsWithTrackId)
+            }
         }
     }
 }

@@ -34,6 +34,14 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         return trackDao.insertTrackWithPoints(trackEntity, pointsWithTrackId)
     }
 
+    // ✅ НОВЫЙ МЕТОД (Вариант З): Batch insert треков в одной транзакции
+    override suspend fun insertTracksBatch(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+
+        trackDao.insertTracksInTransaction(tracks)
+        Log.d("TrackRepository", "💾 Batch insert: ${tracks.size} треков")
+    }
+
     override suspend fun updateTrack(track: Track) {
         trackDao.updateTrackWithPoints(
             track.toEntity(),
@@ -45,7 +53,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         trackDao.deleteTrackById(id)
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Batch UPDATE вместо N отдельных запросов
     override suspend fun updateNearbyPoints(
         latitude: Double,
         longitude: Double,
@@ -62,7 +69,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
 
         val candidates = trackDao.getPointsInBoundingBox(minLat, maxLat, minLon, maxLon)
 
-        // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Собираем ID точек, попадающих в радиус
         val pointIdsToUpdate = mutableListOf<Long>()
         candidates.forEach { pointEntity ->
             val distance = calculateDistance(
@@ -74,7 +80,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
             }
         }
 
-        // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Один batch UPDATE вместо N отдельных
         if (pointIdsToUpdate.isNotEmpty()) {
             trackDao.updatePointsBumpIndexInBatch(pointIdsToUpdate, bumpIndex)
             Log.d("TrackRepository", "💾 Batch UPDATE: ${pointIdsToUpdate.size} точек, bumpIndex=$bumpIndex")
@@ -86,7 +91,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         trackDao.deleteAllTracks()
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert точек без удаления старых
     override suspend fun insertPoints(trackId: Long, points: List<TrackPoint>) {
         if (points.isEmpty()) return
 
@@ -96,7 +100,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         trackDao.insertTrackPoints(pointsWithTrackId)
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Обновление метаданных трека без пересохранения точек
     override suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double) {
         trackDao.updateTrackMetadata(trackId, endTime, distance)
     }
