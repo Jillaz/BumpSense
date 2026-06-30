@@ -6,9 +6,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import ru.razrabozavr.bumpsense.BumpSenseApp
 
-/**
- * Состояние настроек для UI.
- */
 data class SettingsState(
     val isDarkTheme: Boolean = false,
     val gpsIntervalSeconds: Int = 2,
@@ -20,7 +17,6 @@ data class SettingsState(
 
 /**
  * Менеджер настроек приложения.
- * Отвечает за загрузку и сохранение настроек через AppPreferences.
  */
 class SettingsManager(context: Context) {
     private val appPreferences = (context.applicationContext as BumpSenseApp).appPreferences
@@ -34,7 +30,7 @@ class SettingsManager(context: Context) {
     private fun loadSettings(): SettingsState {
         return SettingsState(
             isDarkTheme = appPreferences.isDarkTheme,
-            gpsIntervalSeconds = (appPreferences.gpsUpdateIntervalMs / 1000L).toInt(),
+            gpsIntervalSeconds = (appPreferences.gpsUpdateIntervalMs / 1000).toInt(),
             updateRadiusMeters = appPreferences.updateRadiusMeters,
             accelerometerThreshold = appPreferences.accelerometerThreshold,
             autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes,
