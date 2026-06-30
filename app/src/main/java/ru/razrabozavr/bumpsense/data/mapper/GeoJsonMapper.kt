@@ -102,16 +102,29 @@ object GeoJsonMapper {
 
             val coordinates = geometry.getJSONArray("coordinates")
             val points = mutableListOf<TrackPoint>()
+            var skippedPointsCount = 0
 
             for (i in 0 until coordinates.length()) {
                 val coord = coordinates.getJSONArray(i)
+
+                // Проверка, что массив содержит хотя бы 2 элемента
+                if (coord.length() < 2) {
+                    Log.w("GeoJsonMapper", "⚠️ Точка #$i содержит менее 2 координат, пропуск")
+                    skippedPointsCount++
+                    continue
+                }
+
                 val longitude = coord.getDouble(0)
                 val latitude = coord.getDouble(1)
                 val bumpIndex = if (coord.length() > 2) coord.getInt(2) else 0
 
                 // ✅ ИСПРАВЛЕНИЕ: Валидация координат
                 if (!isValidCoordinate(latitude, longitude)) {
-                    Log.w("GeoJsonMapper", "⚠️ Некорректные координаты в точке #$i: lat=$latitude, lon=$longitude")
+                    Log.w(
+                        "GeoJsonMapper",
+                        "⚠️ Некорректные координаты в точке #$i: lat=$latitude, lon=$longitude"
+                    )
+                    skippedPointsCount++
                     continue
                 }
 
@@ -131,6 +144,13 @@ object GeoJsonMapper {
             if (points.isEmpty()) {
                 Log.w("GeoJsonMapper", "⚠️ Трек не содержит валидных точек")
                 return null
+            }
+
+            if (skippedPointsCount > 0) {
+                Log.w(
+                    "GeoJsonMapper",
+                    "⚠️ Пропущено $skippedPointsCount некорректных точек в треке '$trackName'"
+                )
             }
 
             Track(
