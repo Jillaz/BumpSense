@@ -54,7 +54,7 @@ class RecordingService : Service() {
     private var currentTrackId: Long = 0L
     private var currentTrack: Track? = null
 
-    // ✅ ИСПРАВЛЕНИЕ: Thread-safe коллекция
+    // ✅ ИСПРАВЛЕНИЕ: Thread-safe коллекция для предотвращения race condition
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
 
     override fun onCreate() {
