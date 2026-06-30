@@ -170,11 +170,28 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         speed = 0f
                     )
                     addTrackPoint(trackPoint)
+
+                    // ✅ ИСПРАВЛЕНИЕ: Обновляем currentLocation для синей точки на карте
+                    // Используем координаты из сервиса вместо своего GPS
+                    val location = Location("service").apply {
+                        this.latitude = latitude
+                        this.longitude = longitude
+                        time = System.currentTimeMillis()
+                    }
+                    _uiState.update { current ->
+                        current.copy(
+                            currentLocation = location,
+                            gpsStatus = GpsStatus.FOUND
+                        )
+                    }
                 }
                 RecordingService.ACTION_RECORDING_STOPPED -> {
-                    Log.d("BumpSense", "⏹️ Запись остановлена (GPS продолжает работать)")
+                    Log.d("BumpSense", "⏹️ Запись остановлена — перезапускаем GPS для UI")
 
                     _uiState.update { current -> current.copy(isRecording = false) }
+
+                    // ✅ ИСПРАВЛЕНИЕ: Возвращаем GPS в UI после остановки записи
+                    startGpsTracking()
 
                     val pendingUri = pendingExportUri
                     if (pendingUri != null) {
@@ -214,6 +231,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     }
 
     private fun startGpsTracking() {
+        // ✅ ИСПРАВЛЕНИЕ: Если запись идёт — не запускаем свой GPS, ждём Broadcast от сервиса
+        if (_uiState.value.isRecording) {
+            Log.d("BumpSense", "⏸️ GPS для UI отключён (работает через RecordingService)")
+            return
+        }
+
         if (locationJob?.isActive == true) {
             Log.d("BumpSense", "⏸️ GPS уже работает")
             return
@@ -286,11 +309,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     fun toggleRecording() {
         val context = getApplication<Application>()
         if (_uiState.value.isRecording) {
-            Log.d("BumpSense", "⏹️ Остановка записи (GPS продолжает работать)")
+            Log.d("BumpSense", "⏹️ Остановка записи")
             RecordingService.stopRecording(context)
             _uiState.update { current -> current.copy(isRecording = false) }
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
+
+            // ✅ ИСПРАВЛЕНИЕ: Останавливаем GPS в UI — теперь координаты берём из сервиса
+            locationJob?.cancel()
+            locationJob = null
+            Log.d("BumpSense", "⏸️ GPS в UI остановлен (передаём управление RecordingService)")
+
             RecordingService.startRecording(context)
             _uiState.update { current ->
                 current.copy(
