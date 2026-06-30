@@ -14,6 +14,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,7 @@ import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
 import ru.razrabozavr.bumpsense.service.RecordingService
-import com.google.android.gms.location.Priority
+import kotlin.time.Duration.Companion.milliseconds
 
 data class MapUiState(
     val isRecording: Boolean = false,
@@ -86,10 +87,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     private val _cameraBounds = MutableStateFlow<CameraBounds?>(null)
     val cameraBounds: StateFlow<CameraBounds?> = _cameraBounds.asStateFlow()
 
-    // ✅ Текущие bounds карты для фильтрации видимых треков
+    // Текущие bounds карты для фильтрации видимых треков
     private val _currentMapBounds = MutableStateFlow<CameraBounds?>(null)
 
-    // ✅ Job для debounce при движении камеры
+    // Job для debounce при движении камеры
     private var cameraMoveJob: Job? = null
 
     // ===== НАСТРОЙКИ =====
@@ -100,7 +101,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
             updateRadiusMeters = appPreferences.updateRadiusMeters,
             accelerometerThreshold = appPreferences.accelerometerThreshold,
             autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes,
-            minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters  // ✅// ✅
+            minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
         )
     )
     val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
@@ -120,11 +121,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         _isDarkTheme.value = isDark
     }
 
-    // ✅ Метод для обновления минимального смещения
     fun updateMinUpdateDistance(meters: Float) {
         appPreferences.minUpdateDistanceMeters = meters
         _settingsState.update { current -> current.copy(minUpdateDistanceMeters = meters) }
-        // ✅ Применяем значение к текущему LocationClient
         locationClient.minUpdateDistanceMeters = meters
         Log.d("BumpSense", "📏 Мин. смещение изменено на $meters м")
     }
@@ -146,11 +145,10 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         _settingsState.update { current -> current.copy(accelerometerThreshold = threshold) }
     }
 
-    // ✅ Метод для обновления интервала автосохранения
     fun updateAutoSaveInterval(minutes: Int) {
         appPreferences.autoSaveIntervalMinutes = minutes
         _settingsState.update { current -> current.copy(autoSaveIntervalMinutes = minutes) }
-        Log.d("BumpSense", "️ Интервал автосохранения изменён на $minutes мин (вступит в силу при следующей записи)")
+        Log.d("BumpSense", "⏱️ Интервал автосохранения изменён на $minutes мин (вступит в силу при следующей записи)")
     }
     // ==========================
 
@@ -223,7 +221,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
         val interval = appPreferences.gpsIntervalMs
 
-        // ✅ ИСПРАВЛЕНИЕ: Устанавливаем BALANCED_POWER для UI (экономия батареи)
+        // Устанавливаем BALANCED_POWER для UI (экономия батареи)
         locationClient.priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
         locationClient.minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
 
@@ -274,7 +272,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         historyTracks = tracks.map { track -> track.points }
                     )
                 }
-                // ✅ Обновляем allTracks в режиме редактирования
+                // Обновляем allTracks в режиме редактирования
                 _trackEditState.update { currentState ->
                     currentState.copy(
                         allTracks = tracks,
@@ -333,7 +331,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     fun exportAllTracks(uri: Uri) {
         if (_uiState.value.isRecording) {
             pendingExportUri = uri
-            Log.d("BumpSense", "️ Запись идёт, останавливаем перед экспортом")
+            Log.d("BumpSense", "⏸️ Запись идёт, останавливаем перед экспортом")
             RecordingService.stopRecording(getApplication())
         } else {
             doExportAllTracks(uri)
@@ -383,7 +381,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                 val jsonString = inputStream.bufferedReader().use { reader -> reader.readText() }
                 inputStream.close()
 
-                Log.d("BumpSense", " Размер файла: ${jsonString.length} символов")
+                Log.d("BumpSense", "📄 Размер файла: ${jsonString.length} символов")
 
                 if (jsonString.isEmpty()) {
                     _uiState.update { current -> current.copy(snackbarMessage = "Файл пустой") }
@@ -434,7 +432,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                 val jsonString = inputStream.bufferedReader().use { reader -> reader.readText() }
                 inputStream.close()
 
-                Log.d("BumpSense", " Размер файла: ${jsonString.length} символов")
+                Log.d("BumpSense", "📄 Размер файла: ${jsonString.length} символов")
 
                 if (jsonString.isEmpty()) {
                     _uiState.update { current -> current.copy(snackbarMessage = "Файл пустой") }
@@ -511,26 +509,23 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                     currentTrackPoints = emptyList()
                 )
             }
-            Log.d("BumpSense", " Выход из режима редактирования, загружено треков: ${allTracks.size}")
+            Log.d("BumpSense", "🔙 Выход из режима редактирования, загружено треков: ${allTracks.size}")
         }
     }
 
-    // ✅ Новый метод для переключения вкладок
     fun selectTrackTab(tab: TrackListTab) {
         _trackEditState.update { current ->
             current.copy(currentTab = tab)
         }
     }
 
-    // ✅ Новый метод для обновления видимой области с debounce
     fun updateVisibleArea(bounds: CameraBounds?) {
         _currentMapBounds.value = bounds
 
-        // Если режим редактирования активен — пересчитываем видимые треки с debounce
         if (_isEditMode.value) {
             cameraMoveJob?.cancel()
             cameraMoveJob = viewModelScope.launch {
-                delay(300) // Debounce 300мс
+                delay(300.milliseconds)
                 val allTracks = trackRepository.getAllTracks().first()
                 _trackEditState.update { current ->
                     current.copy(
@@ -541,7 +536,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ Вспомогательная функция фильтрации
     private fun filterTracksByVisibleArea(
         allTracks: List<Track>,
         bounds: CameraBounds?
@@ -649,7 +643,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         visibleTracks = emptyList()
                     )
                 }
-                Log.d("BumpSense", "️ База данных очищена")
+                Log.d("BumpSense", "🗑️ База данных очищена")
             } catch (e: Exception) {
                 Log.e("BumpSense", "❌ Ошибка при очистке БД", e)
                 _uiState.update { current -> current.copy(snackbarMessage = "Ошибка при очистке БД") }
@@ -661,6 +655,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
     fun clearSnackbarMessage() {
         _uiState.update { current -> current.copy(snackbarMessage = null) }
+    }
+
+    // ✅ НОВЫЙ МЕТОД: Показ ошибки загрузки стиля карты
+    fun showStyleLoadError(message: String) {
+        Log.e("BumpSense", "❌ Ошибка стиля карты: $message")
+        _uiState.update { current ->
+            current.copy(snackbarMessage = "⚠️ $message")
+        }
     }
 
     override fun onCleared() {

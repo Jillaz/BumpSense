@@ -164,7 +164,11 @@ fun MapScreen(
                 centerTrigger = centerTrigger,
                 autoFollow = autoFollow,
                 cameraBounds = cameraBounds,
-                onCameraMove = { bounds -> viewModel.updateVisibleArea(bounds) }  // ✅ Новый параметр
+                onCameraMove = { bounds -> viewModel.updateVisibleArea(bounds) },
+                // ✅ НОВОЕ: Обработка ошибок загрузки стиля карты
+                onStyleLoadError = { errorMessage ->
+                    viewModel.showStyleLoadError(errorMessage)
+                }
             )
 
             // Левая колонка: панель акселерометра + панель настроек
@@ -232,7 +236,7 @@ fun MapScreen(
                 TrackEditScreen(
                     uiState = trackEditState,
                     onBackClick = { viewModel.exitEditMode() },
-                    onTabChange = { tab -> viewModel.selectTrackTab(tab) },  // ✅ Новый параметр
+                    onTabChange = { tab -> viewModel.selectTrackTab(tab) },
                     onTrackClick = { trackId -> viewModel.focusOnTrack(trackId) },
                     onDeleteClick = { track -> viewModel.deleteTrack(track) },
                     onDeleteConfirm = { },
@@ -250,7 +254,7 @@ fun MapScreen(
                     onUpdateRadiusChange = { viewModel.updateRadius(it) },
                     onAccelerometerThresholdChange = { viewModel.updateAccelerometerThreshold(it) },
                     onAutoSaveIntervalChange = { minutes -> viewModel.updateAutoSaveInterval(minutes) },
-                    onMinUpdateDistanceChange = { meters -> viewModel.updateMinUpdateDistance(meters) }  // ✅// ✅ Новый параметр
+                    onMinUpdateDistanceChange = { meters -> viewModel.updateMinUpdateDistance(meters) }
                 )
             }
         }

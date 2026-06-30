@@ -39,10 +39,12 @@ fun MapLibreView(
     autoFollow: Boolean = false,
     cameraBounds: CameraBounds? = null,
     onMapReady: (MapLibreMap) -> Unit = {},
-    onCameraMove: (CameraBounds) -> Unit = {}
+    onCameraMove: (CameraBounds) -> Unit = {},
+    onStyleLoadError: (String) -> Unit = {}  // ✅ НОВЫЙ ПАРАМЕТР: callback для ошибок стиля
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
+    var styleLoaded by remember { mutableStateOf(false) }  // ✅ НОВОЕ: флаг загрузки стиля
 
     AndroidView(
         modifier = modifier,
@@ -54,66 +56,86 @@ fun MapLibreView(
                 getMapAsync { map ->
                     Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
 
+                    // ✅ ИСПРАВЛЕНИЕ: Обработка ошибок при инициализации карты
                     map.setStyle(Style.Builder().fromUri(MapConstants.STYLE_URI)) { loadedStyle ->
                         Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
-                        initializeMapLayers(loadedStyle)
-                        enableLocationComponent(this, map, loadedStyle)
-                        mapLibreMap = map
-                        onMapReady(map)
+                        styleLoaded = true
 
-                        // Listener движения камеры
-                        map.addOnCameraMoveListener {
-                            try {
-                                val projection = map.projection
-                                val visibleRegion = projection.visibleRegion
+                        try {
+                            initializeMapLayers(loadedStyle)
+                            enableLocationComponent(this, map, loadedStyle)
+                            mapLibreMap = map
+                            onMapReady(map)
 
-                                val nearLeft = visibleRegion.nearLeft ?: return@addOnCameraMoveListener
-                                val nearRight = visibleRegion.nearRight ?: return@addOnCameraMoveListener
-                                val farLeft = visibleRegion.farLeft ?: return@addOnCameraMoveListener
-                                val farRight = visibleRegion.farRight ?: return@addOnCameraMoveListener
+                            // Listener движения камеры
+                            map.addOnCameraMoveListener {
+                                try {
+                                    val projection = map.projection
+                                    val visibleRegion = projection.visibleRegion
 
-                                val bounds = CameraBounds(
-                                    minLat = minOf(
-                                        nearLeft.latitude,
-                                        nearRight.latitude,
-                                        farLeft.latitude,
-                                        farRight.latitude
-                                    ),
-                                    maxLat = maxOf(
-                                        nearLeft.latitude,
-                                        nearRight.latitude,
-                                        farLeft.latitude,
-                                        farRight.latitude
-                                    ),
-                                    minLon = minOf(
-                                        nearLeft.longitude,
-                                        nearRight.longitude,
-                                        farLeft.longitude,
-                                        farRight.longitude
-                                    ),
-                                    maxLon = maxOf(
-                                        nearLeft.longitude,
-                                        nearRight.longitude,
-                                        farLeft.longitude,
-                                        farRight.longitude
+                                    val nearLeft = visibleRegion.nearLeft ?: return@addOnCameraMoveListener
+                                    val nearRight = visibleRegion.nearRight ?: return@addOnCameraMoveListener
+                                    val farLeft = visibleRegion.farLeft ?: return@addOnCameraMoveListener
+                                    val farRight = visibleRegion.farRight ?: return@addOnCameraMoveListener
+
+                                    val bounds = CameraBounds(
+                                        minLat = minOf(
+                                            nearLeft.latitude,
+                                            nearRight.latitude,
+                                            farLeft.latitude,
+                                            farRight.latitude
+                                        ),
+                                        maxLat = maxOf(
+                                            nearLeft.latitude,
+                                            nearRight.latitude,
+                                            farLeft.latitude,
+                                            farRight.latitude
+                                        ),
+                                        minLon = minOf(
+                                            nearLeft.longitude,
+                                            nearRight.longitude,
+                                            farLeft.longitude,
+                                            farRight.longitude
+                                        ),
+                                        maxLon = maxOf(
+                                            nearLeft.longitude,
+                                            nearRight.longitude,
+                                            farLeft.longitude,
+                                            farRight.longitude
+                                        )
                                     )
-                                )
 
-                                onCameraMove(bounds)
-                            } catch (e: Exception) {
-                                Log.e("BumpSense", "❌ Ошибка в camera move listener", e)
+                                    onCameraMove(bounds)
+                                } catch (e: Exception) {
+                                    Log.e("BumpSense", "❌ Ошибка в camera move listener", e)
+                                }
                             }
+                        } catch (e: Exception) {
+                            Log.e("BumpSense", "❌ Ошибка инициализации карты после загрузки стиля", e)
+                            onStyleLoadError("Ошибка инициализации карты: ${e.message}")
                         }
                     }
                 }
             }
         },
         update = { view ->
-            view.getMapAsync { map ->
-                updateTrackLayers(map, currentTrackPoints, historyTracks)
+            // ✅ ИСПРАВЛЕНИЕ: Обновляем слои только если стиль загружен
+            if (styleLoaded) {
+                view.getMapAsync { map ->
+                    updateTrackLayers(map, currentTrackPoints, historyTracks)
+                }
             }
         }
     )
+
+    // ✅ НОВОЕ: Проверка загрузки стиля с таймаутом
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(5000)  // 5 секунд таймаут
+        if (!styleLoaded) {
+            Log.e("BumpSense", "❌ Таймаут загрузки стиля карты (5 секунд)")
+            onStyleLoadError("Не удалось загрузить стиль карты. Проверьте файл style.json в assets.")
+        }
+    }
 
     // ✅ ИСПРАВЛЕНИЕ: Управление lifecycle MapView для предотвращения утечки памяти
     DisposableEffect(Unit) {
@@ -232,6 +254,7 @@ private fun initializeMapLayers(style: Style) {
         Log.d("BumpSense", "✅ Слои треков инициализированы")
     } catch (e: Exception) {
         Log.e("BumpSense", "❌ Ошибка инициализации слоев", e)
+        throw e  // ✅ Пробрасываем ошибку выше для обработки
     }
 }
 
