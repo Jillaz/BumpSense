@@ -5,23 +5,36 @@ import kotlin.math.sqrt
 /**
  * Калькулятор индекса неровности (BumpIndex) на основе данных акселерометра.
  * Использует скользящее окно для вычисления RMS (Root Mean Square) ускорения.
+ *
+ * ✅ ОПТИМИЗАЦИЯ:
+ * - ArrayDeque вместо MutableList (O(1) для add/remove вместо O(n))
+ * - Инкрементальный расчёт суммы квадратов (O(1) вместо O(n))
  */
 class BumpIndexCalculator(
     private val windowSize: Int = 50,
     private val maxAcceleration: Float = 15f
 ) {
+    // ✅ ИСПРАВЛЕНИЕ: ArrayDeque вместо MutableList
+    // addLast() и removeFirst() — O(1) операции
+    private val accelerationBuffer = ArrayDeque<Float>(windowSize)
 
-    private val accelerationBuffer = mutableListOf<Float>()
+    // ✅ ИСПРАВЛЕНИЕ: Инкрементальная сумма квадратов для O(1) расчёта RMS
+    private var sumOfSquares: Double = 0.0
 
     /**
      * Добавляет новое значение ускорения и возвращает текущий индекс неровности (0-100)
      */
     fun addSample(acceleration: Float): Int {
-        accelerationBuffer.add(acceleration)
+        val squared = (acceleration * acceleration).toDouble()
 
-        if (accelerationBuffer.size > windowSize) {
-            accelerationBuffer.removeAt(0)
+        // ✅ ИСПРАВЛЕНИЕ: O(1) операции вместо O(n)
+        if (accelerationBuffer.size >= windowSize) {
+            val removed = accelerationBuffer.removeFirst()
+            sumOfSquares -= (removed * removed).toDouble()
         }
+
+        accelerationBuffer.addLast(acceleration)
+        sumOfSquares += squared
 
         return calculateBumpIndex()
     }
@@ -29,8 +42,7 @@ class BumpIndexCalculator(
     private fun calculateBumpIndex(): Int {
         if (accelerationBuffer.isEmpty()) return 0
 
-        // Вычисляем RMS (Root Mean Square)
-        val sumOfSquares = accelerationBuffer.sumOf { (it * it).toDouble() }
+        // ✅ ИСПРАВЛЕНИЕ: O(1) расчёт вместо O(n) пересчёта суммы
         val rms = sqrt(sumOfSquares / accelerationBuffer.size).toFloat()
 
         // Нормализуем в диапазон 0-100
@@ -41,5 +53,6 @@ class BumpIndexCalculator(
 
     fun reset() {
         accelerationBuffer.clear()
+        sumOfSquares = 0.0
     }
 }
