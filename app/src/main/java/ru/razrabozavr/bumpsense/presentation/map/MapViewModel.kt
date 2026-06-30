@@ -34,34 +34,6 @@ import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
 import ru.razrabozavr.bumpsense.service.RecordingService
 import kotlin.time.Duration.Companion.milliseconds
 
-data class MapUiState(
-    val isRecording: Boolean = false,
-    val isHistoryVisible: Boolean = true,
-    val currentLocation: Location? = null,
-    val currentTrackPoints: List<TrackPoint> = emptyList(),
-    val historyTracks: List<List<TrackPoint>> = emptyList(),
-    val locationPermissionGranted: Boolean = false,
-    val gpsStatus: GpsStatus = GpsStatus.SEARCHING,
-    val snackbarMessage: String? = null,
-    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Состояния для индикатора прогресса
-    val isExporting: Boolean = false,
-    val isImporting: Boolean = false,
-    val progressMessage: String? = null
-)
-
-enum class GpsStatus {
-    SEARCHING,
-    FOUND,
-    UNAVAILABLE
-}
-
-data class CameraBounds(
-    val minLat: Double,
-    val maxLat: Double,
-    val minLon: Double,
-    val maxLon: Double
-)
-
 class MapViewModel(application: Application) : AndroidViewModel(application),
     DefaultLifecycleObserver {
 
@@ -390,11 +362,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Индикатор прогресса при экспорте
     private fun doExportAllTracks(uri: Uri) {
         viewModelScope.launch {
             try {
-                // ✅ Показываем индикатор прогресса
                 _uiState.update { current ->
                     current.copy(
                         isExporting = true,
@@ -416,7 +386,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                     return@launch
                 }
 
-                // ✅ Обновляем сообщение прогресса
                 _uiState.update { current ->
                     current.copy(progressMessage = "Экспорт ${allTracks.size} треков...")
                 }
@@ -449,11 +418,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Индикатор прогресса при импорте
     fun importTracks(uri: Uri) {
         viewModelScope.launch {
             try {
-                // ✅ Показываем индикатор прогресса
                 _uiState.update { current ->
                     current.copy(
                         isImporting = true,
@@ -491,7 +458,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                     return@launch
                 }
 
-                // ✅ Обновляем сообщение прогресса
                 _uiState.update { current ->
                     current.copy(progressMessage = "Парсинг треков...")
                 }
@@ -500,7 +466,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                 Log.d("BumpSense", "📥 Распаршено треков: ${tracks.size}")
 
                 if (tracks.isNotEmpty()) {
-                    // ✅ Обновляем сообщение прогресса
                     _uiState.update { current ->
                         current.copy(progressMessage = "Сохранение ${tracks.size} треков в БД...")
                     }
@@ -545,11 +510,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Индикатор прогресса при добавлении треков
     fun appendTracks(uri: Uri) {
         viewModelScope.launch {
             try {
-                // ✅ Показываем индикатор прогресса
                 _uiState.update { current ->
                     current.copy(
                         isImporting = true,
