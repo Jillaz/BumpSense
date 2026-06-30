@@ -18,9 +18,9 @@ interface TrackRepository {
     )
     suspend fun clearDatabase()
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert точек без удаления старых
+    // ✅ НОВЫЙ МЕТОД (Вариант Б): Batch insert точек без удаления старых
     suspend fun insertPoints(trackId: Long, points: List<TrackPoint>)
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Обновление метаданных трека без пересохранения точек
+    // ✅ НОВЫЙ МЕТОД (Вариант Б): Обновление метаданных трека без пересохранения точек
     suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double)
 }

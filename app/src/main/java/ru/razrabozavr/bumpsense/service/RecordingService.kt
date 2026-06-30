@@ -58,11 +58,16 @@ class RecordingService : Service() {
     // Thread-safe коллекция с ограничением размера (макс 1000 точек в памяти)
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
 
-    // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+    // Ограничение размера буфера
     private val maxBufferSize = 1000
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Счётчик несохранённых точек
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Е): Счётчик несохранённых точек
     private var unsavedPointsCount = 0
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Е): Последний bumpIndex для условного вызова updateNearbyPoints
+    // Вызываем обновление только при значимом изменении (≥ 10)
+    private var lastBumpIndex: Int = -1
+    private val bumpIndexThreshold = 10
 
     override fun onCreate() {
         super.onCreate()
@@ -107,11 +112,11 @@ class RecordingService : Service() {
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-        // ✅ ИСПРАВЛЕНИЕ: Переключаем GPS в режим высокой точности для записи
+        // Переключаем GPS в режим высокой точности для записи
         locationClient.priority = Priority.PRIORITY_HIGH_ACCURACY
         Log.d("BumpSense", "🛰️ GPS переключён в HIGH_ACCURACY для записи")
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock с try-finally
+        // Безопасное получение WakeLock с try-finally
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -143,6 +148,7 @@ class RecordingService : Service() {
                 bumpIndexCalculator.reset()
                 trackPoints.clear()
                 unsavedPointsCount = 0
+                lastBumpIndex = -1  // ✅ ИСПРАВЛЕНИЕ (Вариант Е): Сбрасываем lastBumpIndex
 
                 currentTrackStartTime = System.currentTimeMillis()
 
@@ -158,16 +164,24 @@ class RecordingService : Service() {
 
                         Log.d("BumpSense", "📍 RecordingService: точка #${trackPoints.size}, bump=${trackPoint.bumpIndex}")
 
-                        app.trackRepository.updateNearbyPoints(
-                            latitude = trackPoint.latitude,
-                            longitude = trackPoint.longitude,
-                            bumpIndex = trackPoint.bumpIndex,
-                            radiusMeters = 10.0
-                        )
+                        // ✅ ИСПРАВЛЕНИЕ (Вариант Е): Вызываем updateNearbyPoints только при значимом изменении bumpIndex
+                        val bumpIndexDelta = kotlin.math.abs(trackPoint.bumpIndex - lastBumpIndex)
+                        if (bumpIndexDelta >= bumpIndexThreshold || lastBumpIndex == -1) {
+                            app.trackRepository.updateNearbyPoints(
+                                latitude = trackPoint.latitude,
+                                longitude = trackPoint.longitude,
+                                bumpIndex = trackPoint.bumpIndex,
+                                radiusMeters = 10.0
+                            )
+                            lastBumpIndex = trackPoint.bumpIndex
+                            Log.d("BumpSense", "🔄 updateNearbyPoints вызван: bumpIndex=${trackPoint.bumpIndex}, delta=$bumpIndexDelta")
+                        } else {
+                            Log.d("BumpSense", "⏭️ updateNearbyPoints пропущен: bumpIndex=${trackPoint.bumpIndex}, delta=$bumpIndexDelta < $bumpIndexThreshold")
+                        }
 
-                        // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем каждые 50 точек через batch insert
+                        // Сохраняем каждые 50 точек через batch insert
                         if (unsavedPointsCount >= 50) {
-                            // ✅ ИСПРАВЛЕНИЕ: Безопасное продление WakeLock
+                            // Безопасное продление WakeLock
                             try {
                                 wakeLock?.let {
                                     if (!it.isHeld) {
@@ -179,11 +193,11 @@ class RecordingService : Service() {
                                 Log.e("BumpSense", "❌ Ошибка при продлении WakeLock", e)
                             }
 
-                            // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert только новых точек
+                            // Batch insert только новых точек
                             saveNewPointsBatch()
                         }
 
-                        // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+                        // Ограничение размера буфера
                         if (trackPoints.size > maxBufferSize) {
                             Log.d("BumpSense", "⚠️ Буфер переполнен (${trackPoints.size}), сохраняем и очищаем")
                             saveAndClearBuffer()
@@ -208,7 +222,7 @@ class RecordingService : Service() {
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert только новых точек
+    // Batch insert только новых точек
     private suspend fun saveNewPointsBatch() {
         val app = application as BumpSenseApp
 
@@ -229,7 +243,7 @@ class RecordingService : Service() {
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Метод для сохранения и очистки буфера
+    // Метод для сохранения и очистки буфера
     private suspend fun saveAndClearBuffer() {
         val app = application as BumpSenseApp
 
@@ -270,7 +284,7 @@ class RecordingService : Service() {
     private suspend fun rotateTrack() {
         val app = application as BumpSenseApp
 
-        // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем оставшиеся точки и обновляем метаданные
+        // Сохраняем оставшиеся точки и обновляем метаданные
         saveNewPointsBatch()
 
         val endTime = System.currentTimeMillis()
@@ -290,8 +304,9 @@ class RecordingService : Service() {
         dataCollector.setTrackId(currentTrackId)
         trackPoints.clear()
         unsavedPointsCount = 0
+        lastBumpIndex = -1  // ✅ ИСПРАВЛЕНИЕ (Вариант Е): Сбрасываем lastBumpIndex
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock
+        // Безопасное получение WakeLock
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -319,7 +334,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
+        // Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {
@@ -334,7 +349,7 @@ class RecordingService : Service() {
         serviceScope.launch {
             val app = application as BumpSenseApp
 
-            // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем оставшиеся точки и обновляем метаданные
+            // Сохраняем оставшиеся точки и обновляем метаданные
             saveNewPointsBatch()
 
             val endTime = System.currentTimeMillis()
@@ -372,7 +387,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
+        // Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {

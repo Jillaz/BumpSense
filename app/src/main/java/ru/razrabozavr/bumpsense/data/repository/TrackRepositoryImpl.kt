@@ -1,5 +1,6 @@
 package ru.razrabozavr.bumpsense.data.repository
 
+import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
@@ -13,19 +14,17 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
-    // ✅ ИСПРАВЛЕНИЕ: Загружаем треки с точками одним запросом (нет N+1)
+
     override fun getAllTracks(): Flow<List<Track>> {
         return trackDao.getAllTracksWithPoints().map { tracksWithPoints ->
             tracksWithPoints.map { it.toDomain() }
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Загружаем трек с точками одним запросом
     override suspend fun getTrackById(id: Long): Track? {
         return trackDao.getTrackByIdWithPoints(id)?.toDomain()
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Вставляем трек и точки в одной транзакции
     override suspend fun insertTrack(track: Track): Long {
         val trackEntity = track.toEntity()
         val pointsWithTrackId = track.points.map {
@@ -35,7 +34,6 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         return trackDao.insertTrackWithPoints(trackEntity, pointsWithTrackId)
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Обновляем трек и точки в одной транзакции (атомарно)
     override suspend fun updateTrack(track: Track) {
         trackDao.updateTrackWithPoints(
             track.toEntity(),
@@ -47,6 +45,7 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
         trackDao.deleteTrackById(id)
     }
 
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Batch UPDATE вместо N отдельных запросов
     override suspend fun updateNearbyPoints(
         latitude: Double,
         longitude: Double,
@@ -63,15 +62,22 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
 
         val candidates = trackDao.getPointsInBoundingBox(minLat, maxLat, minLon, maxLon)
 
+        // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Собираем ID точек, попадающих в радиус
+        val pointIdsToUpdate = mutableListOf<Long>()
         candidates.forEach { pointEntity ->
             val distance = calculateDistance(
                 pointEntity.latitude, pointEntity.longitude,
                 latitude, longitude
             )
-
             if (distance <= radiusMeters) {
-                trackDao.updatePointBumpIndex(pointEntity.id, bumpIndex)
+                pointIdsToUpdate.add(pointEntity.id)
             }
+        }
+
+        // ✅ ИСПРАВЛЕНИЕ (Вариант Д): Один batch UPDATE вместо N отдельных
+        if (pointIdsToUpdate.isNotEmpty()) {
+            trackDao.updatePointsBumpIndexInBatch(pointIdsToUpdate, bumpIndex)
+            Log.d("TrackRepository", "💾 Batch UPDATE: ${pointIdsToUpdate.size} точек, bumpIndex=$bumpIndex")
         }
     }
 

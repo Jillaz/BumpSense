@@ -16,12 +16,10 @@ import ru.razrabozavr.bumpsense.domain.model.Track
 
 @Dao
 interface TrackDao {
-    // ✅ НОВОЕ: Загрузка всех треков с точками одним запросом (решение N+1)
     @Transaction
     @Query("SELECT * FROM tracks ORDER BY id DESC")
     fun getAllTracksWithPoints(): Flow<List<TrackWithPoints>>
 
-    // ✅ НОВОЕ: Загрузка одного трека с точками одним запросом
     @Transaction
     @Query("SELECT * FROM tracks WHERE id = :id")
     suspend fun getTrackByIdWithPoints(id: Long): TrackWithPoints?
@@ -41,6 +39,11 @@ interface TrackDao {
     @Query("DELETE FROM track_points WHERE trackId = :trackId")
     suspend fun deletePointsByTrackId(trackId: Long)
 
+    // ✅ НОВЫЙ МЕТОД (Вариант Д): Batch UPDATE — один запрос вместо N
+    @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id IN (:pointIds)")
+    suspend fun updatePointsBumpIndexInBatch(pointIds: List<Long>, bumpIndex: Int)
+
+    // Оставлено для совместимости
     @Query("UPDATE track_points SET bumpIndex = :bumpIndex WHERE id = :pointId")
     suspend fun updatePointBumpIndex(pointId: Long, bumpIndex: Int)
 
@@ -60,11 +63,10 @@ interface TrackDao {
     @Query("DELETE FROM tracks")
     suspend fun deleteAllTracks()
 
-    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Обновление метаданных трека без пересохранения точек
+    // ✅ НОВЫЙ МЕТОД (Вариант Б): Обновление метаданных трека без пересохранения точек
     @Query("UPDATE tracks SET endTime = :endTime, distance = :distance WHERE id = :trackId")
     suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double)
 
-    // ✅ НОВОЕ: Атомарная вставка трека с точками
     @Transaction
     suspend fun insertTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>): Long {
         val trackId = insertTrack(track)
@@ -73,7 +75,6 @@ interface TrackDao {
         return trackId
     }
 
-    // ✅ НОВОЕ: Атомарное обновление трека с точками
     @Transaction
     suspend fun updateTrackWithPoints(track: TrackEntity, points: List<TrackPointEntity>) {
         updateTrack(track)
@@ -85,7 +86,6 @@ interface TrackDao {
     }
 }
 
-// ✅ НОВЫЙ КЛАСС: Для загрузки трека с точками одним запросом
 data class TrackWithPoints(
     @Embedded val track: TrackEntity,
     @Relation(
