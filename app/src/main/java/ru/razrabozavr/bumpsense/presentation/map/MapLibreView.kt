@@ -61,7 +61,7 @@ fun MapLibreView(
                         mapLibreMap = map
                         onMapReady(map)
 
-                        // ✅ Listener движения камеры
+                        // Listener движения камеры
                         map.addOnCameraMoveListener {
                             try {
                                 val projection = map.projection
@@ -115,20 +115,25 @@ fun MapLibreView(
         }
     )
 
-    // ✅ ИСПРАВЛЕНИЕ: Управление lifecycle MapView
+    // ✅ ИСПРАВЛЕНИЕ: Управление lifecycle MapView для предотвращения утечки памяти
     DisposableEffect(Unit) {
         onDispose {
             mapView?.let { view ->
                 Log.d("BumpSense", "🗑️ MapView: onDestroy")
+                view.onPause()
+                view.onStop()
                 view.onDestroy()
             }
         }
     }
 
-    // ✅ Вызов onResume/onPause через LaunchedEffect
+    // ✅ Вызов onResume/onStart при создании
     LaunchedEffect(Unit) {
-        mapView?.onStart()
-        mapView?.onResume()
+        mapView?.let { view ->
+            Log.d("BumpSense", "🔄 MapView: onStart, onResume")
+            view.onStart()
+            view.onResume()
+        }
     }
 
     // Авто-центрирование только когда autoFollow = true
@@ -272,7 +277,6 @@ private fun updateTrackLayers(
         try {
             val currentTrackSource = style.getSourceAs<GeoJsonSource>(MapConstants.CURRENT_TRACK_SOURCE_ID)
             if (currentTrackPoints.size > 1) {
-                // ✅ ИСПРАВЛЕНИЕ: Используем TrackFeatureBuilder вместо дублирования
                 val features = TrackFeatureBuilder.createColoredLineFeatures(currentTrackPoints)
                 currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(features))
             } else {
