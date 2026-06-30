@@ -1,14 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
-   See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older than API 31
-   See https://developer.android.com/about/versions/12/backup-restore
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+Backup rules для Auto Backup (API < 31).
+Для API 31+ используется data_extraction_rules.xml.
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
-    <include domain="database" path="bumpsense_database" />
+    <!-- ✅ ИСПРАВЛЕНИЕ: Исключаем БД из backup для защиты приватности -->
+    <!-- GPS-треки содержат персональные данные пользователя -->
+    <!-- При смене устройства пользователь может экспортировать треки вручную через меню -->
+    <exclude domain="database" path="bumpsense_database" />
+
+    <!-- Исключаем SharedPreferences с настройками (не критично, но желательно) -->
+    <exclude domain="sharedpref" path="bumpsense_prefs.xml" />
 </full-backup-content>
