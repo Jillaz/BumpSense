@@ -2,26 +2,38 @@ package ru.razrabozavr.bumpsense.presentation.map
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
@@ -60,7 +73,6 @@ fun MapScreen(
     val showExportDialog by viewModel.showExportDialog.collectAsState()
     val showClearDbDialog by viewModel.showClearDbDialog.collectAsState()
     var showAboutDialog by remember { mutableStateOf(false) }
-
     val trackEditState by viewModel.trackEditState.collectAsState()
     val isEditMode by viewModel.isEditMode.collectAsState()
     val cameraBounds by viewModel.cameraBounds.collectAsState()
@@ -165,7 +177,6 @@ fun MapScreen(
                 autoFollow = autoFollow,
                 cameraBounds = cameraBounds,
                 onCameraMove = { bounds -> viewModel.updateVisibleArea(bounds) },
-                // ✅ НОВОЕ: Обработка ошибок загрузки стиля карты
                 onStyleLoadError = { errorMessage ->
                     viewModel.showStyleLoadError(errorMessage)
                 }
@@ -232,7 +243,13 @@ fun MapScreen(
                 }
             }
 
-            if (isEditMode) {
+            // ✅ ИСПРАВЛЕНИЕ (Вариант К): Анимированное появление экрана редактирования треков
+            AnimatedVisibility(
+                visible = isEditMode,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
                 TrackEditScreen(
                     uiState = trackEditState,
                     onBackClick = { viewModel.exitEditMode() },
@@ -240,12 +257,17 @@ fun MapScreen(
                     onTrackClick = { trackId -> viewModel.focusOnTrack(trackId) },
                     onDeleteClick = { track -> viewModel.deleteTrack(track) },
                     onDeleteConfirm = { },
-                    onDeleteCancel = { },
-                    modifier = Modifier.align(Alignment.BottomCenter)
+                    onDeleteCancel = { }
                 )
             }
 
-            if (isSettingsMode) {
+            // ✅ ИСПРАВЛЕНИЕ (Вариант К): Анимированное появление экрана настроек
+            AnimatedVisibility(
+                visible = isSettingsMode,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
                 SettingsScreen(
                     settingsState = settingsState,
                     onBackClick = { viewModel.exitSettingsMode() },
@@ -256,6 +278,49 @@ fun MapScreen(
                     onAutoSaveIntervalChange = { minutes -> viewModel.updateAutoSaveInterval(minutes) },
                     onMinUpdateDistanceChange = { meters -> viewModel.updateMinUpdateDistance(meters) }
                 )
+            }
+
+            // ✅ ИСПРАВЛЕНИЕ (Вариант К): Индикатор прогресса при экспорте/импорте
+            AnimatedVisibility(
+                visible = uiState.isExporting || uiState.isImporting,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                    tonalElevation = 8.dp,
+                    shadowElevation = 8.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            strokeWidth = 3.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Column {
+                            Text(
+                                text = if (uiState.isExporting) "Экспорт" else "Импорт",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            uiState.progressMessage?.let { message ->
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 

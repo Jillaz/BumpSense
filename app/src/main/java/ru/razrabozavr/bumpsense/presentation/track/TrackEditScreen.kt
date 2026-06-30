@@ -1,5 +1,9 @@
 package ru.razrabozavr.bumpsense.presentation.track
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,6 +39,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,20 +57,17 @@ import java.util.Locale
 import ru.razrabozavr.bumpsense.R
 import ru.razrabozavr.bumpsense.domain.model.Track
 
-// ✅ Enum для вкладок
 enum class TrackListTab {
-    ALL,        // Все треки из базы
-    VISIBLE     // Только треки в области видимости карты
+    ALL,
+    VISIBLE
 }
 
-// ✅ Обновлённое состояние с поддержкой вкладок
 data class TrackEditUiState(
     val allTracks: List<Track> = emptyList(),
     val visibleTracks: List<Track> = emptyList(),
     val currentTab: TrackListTab = TrackListTab.ALL,
     val focusedTrackId: Long? = null
 ) {
-    // Удобный геттер для текущего списка треков
     val currentTracks: List<Track>
         get() = when (currentTab) {
             TrackListTab.ALL -> allTracks
@@ -77,7 +80,7 @@ data class TrackEditUiState(
 fun TrackEditScreen(
     uiState: TrackEditUiState,
     onBackClick: () -> Unit,
-    onTabChange: (TrackListTab) -> Unit,  // ✅ Новый callback
+    onTabChange: (TrackListTab) -> Unit,
     onTrackClick: (Long) -> Unit,
     onDeleteClick: (Track) -> Unit,
     onDeleteConfirm: () -> Unit,
@@ -86,6 +89,18 @@ fun TrackEditScreen(
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     var trackToDelete by remember { mutableStateOf<Track?>(null) }
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Сохранение позиции скролла
+    val listState = rememberLazyListState()
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Прокрутка к сфокусированному треку
+    LaunchedEffect(uiState.focusedTrackId, uiState.currentTracks) {
+        val focusedId = uiState.focusedTrackId ?: return@LaunchedEffect
+        val index = uiState.currentTracks.indexOfFirst { it.id == focusedId }
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -124,7 +139,7 @@ fun TrackEditScreen(
                     )
                 }
 
-                // ✅ Вкладки
+                // Вкладки
                 TabRow(
                     selectedTabIndex = when (uiState.currentTab) {
                         TrackListTab.ALL -> 0
@@ -192,21 +207,36 @@ fun TrackEditScreen(
                         )
                     }
                 } else {
+                    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Используем rememberLazyListState для сохранения позиции
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        items(uiState.currentTracks, key = { it.id }) { track ->
-                            TrackItem(
-                                track = track,
-                                isFocused = uiState.focusedTrackId == track.id,
-                                onClick = { onTrackClick(track.id) },
-                                onDeleteClick = {
-                                    trackToDelete = track
-                                    showDeleteDialog = true
-                                }
-                            )
+                        items(
+                            items = uiState.currentTracks,
+                            key = { it.id }
+                        ) { track ->
+                            // ✅ ИСПРАВЛЕНИЕ (Вариант К): Анимация появления элемента
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(animationSpec = tween(300)) +
+                                        slideInHorizontally(
+                                            initialOffsetX = { -it / 2 },
+                                            animationSpec = tween(300)
+                                        )
+                            ) {
+                                TrackItem(
+                                    track = track,
+                                    isFocused = uiState.focusedTrackId == track.id,
+                                    onClick = { onTrackClick(track.id) },
+                                    onDeleteClick = {
+                                        trackToDelete = track
+                                        showDeleteDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -271,7 +301,6 @@ private fun TrackItem(
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val dateText = dateFormat.format(Date(track.startTime))
-
     Card(
         modifier = Modifier
             .fillMaxWidth()

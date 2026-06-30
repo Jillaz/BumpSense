@@ -1,5 +1,9 @@
 package ru.razrabozavr.bumpsense.presentation.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,8 +33,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,14 +47,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ru.razrabozavr.bumpsense.R
 
-// ✅ Обновлённый SettingsState
 data class SettingsState(
     val isDarkTheme: Boolean,
     val gpsIntervalMs: Long,
     val updateRadiusMeters: Double,
     val accelerometerThreshold: Float,
     val autoSaveIntervalMinutes: Int,
-    val minUpdateDistanceMeters: Float  // ✅ Новое поле
+    val minUpdateDistanceMeters: Float
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -61,197 +66,210 @@ fun SettingsScreen(
     onUpdateRadiusChange: (Double) -> Unit,
     onAccelerometerThresholdChange: (Float) -> Unit,
     onAutoSaveIntervalChange: (Int) -> Unit,
-    onMinUpdateDistanceChange: (Float) -> Unit  // ✅ Новый callback
+    onMinUpdateDistanceChange: (Float) -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.settings_back)
+    // ✅ ИСПРАВЛЕНИЕ (Вариант К): Анимация появления экрана настроек
+    var isVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { isVisible = true }
+
+    AnimatedVisibility(
+        visible = isVisible,
+        enter = fadeIn(animationSpec = tween(400)) +
+                slideInVertically(
+                    initialOffsetY = { -it / 3 },
+                    animationSpec = tween(400)
+                )
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.settings_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onBackClick) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.settings_back)
+                            )
+                        }
+                    }
+                )
+            }
+        ) { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Тема
+                SettingsCard(
+                    icon = Icons.Default.DarkMode,
+                    title = stringResource(R.string.settings_dark_theme_title),
+                    description = if (settingsState.isDarkTheme)
+                        stringResource(R.string.settings_dark_theme_on)
+                    else
+                        stringResource(R.string.settings_dark_theme_off)
+                ) {
+                    Switch(
+                        checked = settingsState.isDarkTheme,
+                        onCheckedChange = onDarkThemeChange
+                    )
+                }
+
+                // Частота GPS
+                var gpsSliderValue by remember { mutableFloatStateOf(settingsState.gpsIntervalMs.toFloat()) }
+                SettingsCard(
+                    icon = Icons.Default.GpsFixed,
+                    title = stringResource(R.string.settings_gps_title),
+                    description = stringResource(R.string.settings_gps_description)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = gpsSliderValue,
+                            onValueChange = {
+                                gpsSliderValue = it
+                                onGpsIntervalChange(it.toLong())
+                            },
+                            valueRange = 1000f..10000f,
+                            steps = 8,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.settings_gps_current,
+                                (gpsSliderValue / 1000).toInt()
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                 }
-            )
-        }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Тема
-            SettingsCard(
-                icon = Icons.Default.DarkMode,
-                title = stringResource(R.string.settings_dark_theme_title),
-                description = if (settingsState.isDarkTheme)
-                    stringResource(R.string.settings_dark_theme_on)
-                else
-                    stringResource(R.string.settings_dark_theme_off)
-            ) {
-                Switch(
-                    checked = settingsState.isDarkTheme,
-                    onCheckedChange = onDarkThemeChange
-                )
-            }
 
-            // Частота GPS
-            var gpsSliderValue by remember { mutableFloatStateOf(settingsState.gpsIntervalMs.toFloat()) }
-            SettingsCard(
-                icon = Icons.Default.GpsFixed,
-                title = stringResource(R.string.settings_gps_title),
-                description = stringResource(R.string.settings_gps_description)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = gpsSliderValue,
-                        onValueChange = {
-                            gpsSliderValue = it
-                            onGpsIntervalChange(it.toLong())
-                        },
-                        valueRange = 1000f..10000f,
-                        steps = 8,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.settings_gps_current,
-                            (gpsSliderValue / 1000).toInt()
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                // Радиус обновления
+                var radiusSliderValue by remember { mutableFloatStateOf(settingsState.updateRadiusMeters.toFloat()) }
+                SettingsCard(
+                    icon = Icons.Default.Radar,
+                    title = stringResource(R.string.settings_radius_title),
+                    description = stringResource(R.string.settings_radius_description)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = radiusSliderValue,
+                            onValueChange = {
+                                radiusSliderValue = it
+                                onUpdateRadiusChange(it.toDouble())
+                            },
+                            valueRange = 5f..50f,
+                            steps = 9,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.settings_radius_current,
+                                radiusSliderValue.toInt()
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
-            }
 
-            // Радиус обновления
-            var radiusSliderValue by remember { mutableFloatStateOf(settingsState.updateRadiusMeters.toFloat()) }
-            SettingsCard(
-                icon = Icons.Default.Radar,
-                title = stringResource(R.string.settings_radius_title),
-                description = stringResource(R.string.settings_radius_description)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = radiusSliderValue,
-                        onValueChange = {
-                            radiusSliderValue = it
-                            onUpdateRadiusChange(it.toDouble())
-                        },
-                        valueRange = 5f..50f,
-                        steps = 9,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.settings_radius_current,
-                            radiusSliderValue.toInt()
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                // Порог акселерометра
+                var accelSliderValue by remember { mutableFloatStateOf(settingsState.accelerometerThreshold) }
+                SettingsCard(
+                    icon = Icons.Default.Vibration,
+                    title = stringResource(R.string.settings_accel_title),
+                    description = stringResource(R.string.settings_accel_description)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = accelSliderValue,
+                            onValueChange = {
+                                accelSliderValue = it
+                                onAccelerometerThresholdChange(it)
+                            },
+                            valueRange = 1f..20f,
+                            steps = 19,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.settings_accel_current,
+                                accelSliderValue
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
-            }
 
-            // Порог акселерометра
-            var accelSliderValue by remember { mutableFloatStateOf(settingsState.accelerometerThreshold) }
-            SettingsCard(
-                icon = Icons.Default.Vibration,
-                title = stringResource(R.string.settings_accel_title),
-                description = stringResource(R.string.settings_accel_description)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = accelSliderValue,
-                        onValueChange = {
-                            accelSliderValue = it
-                            onAccelerometerThresholdChange(it)
-                        },
-                        valueRange = 1f..20f,
-                        steps = 19,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.settings_accel_current,
-                            accelSliderValue
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                // Автосохранение треков
+                var autoSaveValue by remember { mutableFloatStateOf(settingsState.autoSaveIntervalMinutes.toFloat()) }
+                SettingsCard(
+                    icon = Icons.Default.Timer,
+                    title = stringResource(R.string.settings_autosave_title),
+                    description = stringResource(R.string.settings_autosave_description)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = autoSaveValue,
+                            onValueChange = {
+                                autoSaveValue = it
+                                onAutoSaveIntervalChange(it.toInt())
+                            },
+                            valueRange = 5f..60f,
+                            steps = 11,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.settings_autosave_current,
+                                autoSaveValue.toInt()
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
-            }
 
-            // Автосохранение треков
-            var autoSaveValue by remember { mutableFloatStateOf(settingsState.autoSaveIntervalMinutes.toFloat()) }
-            SettingsCard(
-                icon = Icons.Default.Timer,
-                title = stringResource(R.string.settings_autosave_title),
-                description = stringResource(R.string.settings_autosave_description)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = autoSaveValue,
-                        onValueChange = {
-                            autoSaveValue = it
-                            onAutoSaveIntervalChange(it.toInt())
-                        },
-                        valueRange = 5f..60f,
-                        steps = 11,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.settings_autosave_current,
-                            autoSaveValue.toInt()
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-            }
-
-            // ✅ Минимальное смещение для точки (новая карточка)
-            var distanceValue by remember { mutableFloatStateOf(settingsState.minUpdateDistanceMeters) }
-            SettingsCard(
-                icon = Icons.Default.LocationOn,
-                title = stringResource(R.string.settings_min_distance_title),
-                description = stringResource(R.string.settings_min_distance_description)
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = distanceValue,
-                        onValueChange = {
-                            distanceValue = it
-                            onMinUpdateDistanceChange(it)
-                        },
-                        valueRange = 0f..10f,
-                        steps = 19,  // 21 позиция: 0, 0.5, 1, 1.5... 10
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        text = if (distanceValue == 0f)
-                            stringResource(R.string.settings_min_distance_disabled)
-                        else
-                            stringResource(R.string.settings_min_distance_current, distanceValue),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 10.sp,
-                        modifier = Modifier.padding(top = 4.dp),
-                        color = if (distanceValue == 0f)
-                            MaterialTheme.colorScheme.error
-                        else
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                // Минимальное смещение для точки
+                var distanceValue by remember { mutableFloatStateOf(settingsState.minUpdateDistanceMeters) }
+                SettingsCard(
+                    icon = Icons.Default.LocationOn,
+                    title = stringResource(R.string.settings_min_distance_title),
+                    description = stringResource(R.string.settings_min_distance_description)
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Slider(
+                            value = distanceValue,
+                            onValueChange = {
+                                distanceValue = it
+                                onMinUpdateDistanceChange(it)
+                            },
+                            valueRange = 0f..10f,
+                            steps = 19,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = if (distanceValue == 0f)
+                                stringResource(R.string.settings_min_distance_disabled)
+                            else
+                                stringResource(R.string.settings_min_distance_current, distanceValue),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = if (distanceValue == 0f)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -289,7 +307,6 @@ private fun SettingsCard(
                     modifier = Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.primary
                 )
-
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
