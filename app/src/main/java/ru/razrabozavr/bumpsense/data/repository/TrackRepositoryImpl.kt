@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.map
 import ru.razrabozavr.bumpsense.data.local.dao.TrackDao
 import ru.razrabozavr.bumpsense.data.local.mapper.toEntity
 import ru.razrabozavr.bumpsense.domain.model.Track
+import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.domain.repository.TrackRepository
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -12,7 +13,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
-
     // ✅ ИСПРАВЛЕНИЕ: Загружаем треки с точками одним запросом (нет N+1)
     override fun getAllTracks(): Flow<List<Track>> {
         return trackDao.getAllTracksWithPoints().map { tracksWithPoints ->
@@ -78,6 +78,21 @@ class TrackRepositoryImpl(private val trackDao: TrackDao) : TrackRepository {
     override suspend fun clearDatabase() {
         trackDao.deleteAllTrackPoints()
         trackDao.deleteAllTracks()
+    }
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert точек без удаления старых
+    override suspend fun insertPoints(trackId: Long, points: List<TrackPoint>) {
+        if (points.isEmpty()) return
+
+        val pointsWithTrackId = points.map {
+            it.copy(trackId = trackId).toEntity()
+        }
+        trackDao.insertTrackPoints(pointsWithTrackId)
+    }
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Обновление метаданных трека без пересохранения точек
+    override suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double) {
+        trackDao.updateTrackMetadata(trackId, endTime, distance)
     }
 
     private fun calculateDistance(

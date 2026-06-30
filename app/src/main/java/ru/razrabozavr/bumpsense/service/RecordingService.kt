@@ -23,7 +23,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
 import ru.razrabozavr.bumpsense.R
-import ru.razrabozavr.bumpsense.RecordingEvent
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerClient
 import ru.razrabozavr.bumpsense.data.sensor.BumpIndexCalculator
@@ -59,8 +58,11 @@ class RecordingService : Service() {
     // Thread-safe коллекция с ограничением размера (макс 1000 точек в памяти)
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
 
-    // Ограничение размера буфера
+    // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
     private val maxBufferSize = 1000
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Счётчик несохранённых точек
+    private var unsavedPointsCount = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -105,11 +107,11 @@ class RecordingService : Service() {
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-        // Переключаем GPS в режим высокой точности для записи
+        // ✅ ИСПРАВЛЕНИЕ: Переключаем GPS в режим высокой точности для записи
         locationClient.priority = Priority.PRIORITY_HIGH_ACCURACY
         Log.d("BumpSense", "🛰️ GPS переключён в HIGH_ACCURACY для записи")
 
-        // Безопасное получение WakeLock с try-finally
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock с try-finally
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -140,6 +142,7 @@ class RecordingService : Service() {
                 dataCollector.setTrackId(currentTrackId)
                 bumpIndexCalculator.reset()
                 trackPoints.clear()
+                unsavedPointsCount = 0
 
                 currentTrackStartTime = System.currentTimeMillis()
 
@@ -151,6 +154,7 @@ class RecordingService : Service() {
                 dataCollector.collectTrackPoints()
                     .onEach { trackPoint ->
                         trackPoints.add(trackPoint)
+                        unsavedPointsCount++
 
                         Log.d("BumpSense", "📍 RecordingService: точка #${trackPoints.size}, bump=${trackPoint.bumpIndex}")
 
@@ -161,10 +165,9 @@ class RecordingService : Service() {
                             radiusMeters = 10.0
                         )
 
-                        // Сохраняем каждые 50 точек вместо 5
-                        // И используем batch insert вместо полной перезаписи
-                        if (trackPoints.size % 50 == 0) {
-                            // Безопасное продление WakeLock
+                        // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем каждые 50 точек через batch insert
+                        if (unsavedPointsCount >= 50) {
+                            // ✅ ИСПРАВЛЕНИЕ: Безопасное продление WakeLock
                             try {
                                 wakeLock?.let {
                                     if (!it.isHeld) {
@@ -176,38 +179,22 @@ class RecordingService : Service() {
                                 Log.e("BumpSense", "❌ Ошибка при продлении WakeLock", e)
                             }
 
-                            // Сохраняем только новые точки (batch insert)
-                            currentTrack?.let { t ->
-                                serviceScope.launch {
-                                    try {
-                                        app.trackRepository.insertTrack(
-                                            t.copy(
-                                                id = currentTrackId,
-                                                points = trackPoints.toList()
-                                            )
-                                        )
-                                        Log.d("BumpSense", "💾 RecordingService: сохранено в БД, точек=${trackPoints.size}")
-                                    } catch (e: Exception) {
-                                        Log.e("BumpSense", "❌ Ошибка сохранения в БД", e)
-                                    }
-                                }
-                            }
+                            // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert только новых точек
+                            saveNewPointsBatch()
                         }
 
-                        // Ограничение размера буфера
+                        // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
                         if (trackPoints.size > maxBufferSize) {
                             Log.d("BumpSense", "⚠️ Буфер переполнен (${trackPoints.size}), сохраняем и очищаем")
                             saveAndClearBuffer()
                         }
 
-                        // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow вместо Broadcast
-                        app.tryEmitRecordingEvent(
-                            RecordingEvent.TrackPointUpdate(
-                                latitude = trackPoint.latitude,
-                                longitude = trackPoint.longitude,
-                                bumpIndex = trackPoint.bumpIndex
-                            )
-                        )
+                        sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
+                            setPackage(packageName)
+                            putExtra(EXTRA_LATITUDE, trackPoint.latitude)
+                            putExtra(EXTRA_LONGITUDE, trackPoint.longitude)
+                            putExtra(EXTRA_BUMP_INDEX, trackPoint.bumpIndex)
+                        })
                     }
                     .catch { e ->
                         Log.e("BumpSense", "❌ RecordingService: ошибка в потоке", e)
@@ -221,25 +208,44 @@ class RecordingService : Service() {
         }
     }
 
-    // Метод для сохранения и очистки буфера
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Batch insert только новых точек
+    private suspend fun saveNewPointsBatch() {
+        val app = application as BumpSenseApp
+
+        val pointsToSave: List<TrackPoint>
+        synchronized(trackPoints) {
+            if (unsavedPointsCount == 0) return
+            // Берём последние unsavedPointsCount точек
+            val startIndex = trackPoints.size - unsavedPointsCount
+            pointsToSave = trackPoints.subList(startIndex, trackPoints.size).toList()
+            unsavedPointsCount = 0
+        }
+
+        try {
+            app.trackRepository.insertPoints(currentTrackId, pointsToSave)
+            Log.d("BumpSense", "💾 RecordingService: batch insert ${pointsToSave.size} точек")
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка batch insert", e)
+        }
+    }
+
+    // ✅ ИСПРАВЛЕНИЕ: Метод для сохранения и очистки буфера
     private suspend fun saveAndClearBuffer() {
         val app = application as BumpSenseApp
 
-        currentTrack?.let { t ->
-            try {
-                app.trackRepository.insertTrack(
-                    t.copy(
-                        id = currentTrackId,
-                        points = trackPoints.toList()
-                    )
-                )
-                Log.d("BumpSense", "💾 Буфер сохранён в БД, точек=${trackPoints.size}")
-            } catch (e: Exception) {
-                Log.e("BumpSense", "❌ Ошибка сохранения буфера", e)
-            }
+        val pointsToSave: List<TrackPoint>
+        synchronized(trackPoints) {
+            pointsToSave = trackPoints.toList()
+            trackPoints.clear()
+            unsavedPointsCount = 0
         }
 
-        trackPoints.clear()
+        try {
+            app.trackRepository.insertPoints(currentTrackId, pointsToSave)
+            Log.d("BumpSense", "💾 Буфер сохранён в БД, точек=${pointsToSave.size}")
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка сохранения буфера", e)
+        }
     }
 
     private fun startAutoSaveTimer(intervalMinutes: Int) {
@@ -264,14 +270,11 @@ class RecordingService : Service() {
     private suspend fun rotateTrack() {
         val app = application as BumpSenseApp
 
-        currentTrack?.let { t ->
-            val finishedTrack = t.copy(
-                id = currentTrackId,
-                endTime = System.currentTimeMillis(),
-                points = trackPoints.toList()
-            )
-            app.trackRepository.insertTrack(finishedTrack)
-        }
+        // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем оставшиеся точки и обновляем метаданные
+        saveNewPointsBatch()
+
+        val endTime = System.currentTimeMillis()
+        app.trackRepository.updateTrackMetadata(currentTrackId, endTime, 0.0)
 
         val savedPointsCount = trackPoints.size
         Log.d("BumpSense", "💾 Автосохранение: трек #$currentTrackId сохранён, точек=$savedPointsCount")
@@ -286,8 +289,9 @@ class RecordingService : Service() {
         currentTrackId = app.trackRepository.insertTrack(newTrack)
         dataCollector.setTrackId(currentTrackId)
         trackPoints.clear()
+        unsavedPointsCount = 0
 
-        // Безопасное получение WakeLock
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -300,8 +304,10 @@ class RecordingService : Service() {
 
         Log.d("BumpSense", "🆕 Автосохранение: создан новый трек #$currentTrackId")
 
-        // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow
-        app.tryEmitRecordingEvent(RecordingEvent.TrackRotated(savedPointsCount))
+        sendBroadcast(Intent(ACTION_TRACK_ROTATED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_PREVIOUS_TRACK_POINTS, savedPointsCount)
+        })
     }
 
     private fun stopRecording() {
@@ -313,7 +319,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // Безопасное освобождение WakeLock
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {
@@ -328,21 +334,17 @@ class RecordingService : Service() {
         serviceScope.launch {
             val app = application as BumpSenseApp
 
-            if (trackPoints.isNotEmpty()) {
-                val track = Track(
-                    id = currentTrackId,
-                    name = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date()),
-                    startTime = currentTrack?.startTime ?: (System.currentTimeMillis() - (trackPoints.size * 2000L)),
-                    endTime = System.currentTimeMillis(),
-                    points = trackPoints.toList()
-                )
+            // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Сохраняем оставшиеся точки и обновляем метаданные
+            saveNewPointsBatch()
 
-                app.trackRepository.insertTrack(track)
-                Log.d("BumpSense", "💾 RecordingService: финальное сохранение, точек=${trackPoints.size}")
-            }
+            val endTime = System.currentTimeMillis()
+            app.trackRepository.updateTrackMetadata(currentTrackId, endTime, 0.0)
 
-            // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow
-            app.emitRecordingEvent(RecordingEvent.RecordingStopped)
+            Log.d("BumpSense", "💾 RecordingService: финальное сохранение, точек=${trackPoints.size}")
+
+            sendBroadcast(Intent(ACTION_RECORDING_STOPPED).apply {
+                setPackage(packageName)
+            })
         }
     }
 
@@ -370,7 +372,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // Безопасное освобождение WakeLock
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {
@@ -388,6 +390,14 @@ class RecordingService : Service() {
     companion object {
         const val ACTION_START_RECORDING = "action_start_recording"
         const val ACTION_STOP_RECORDING = "action_stop_recording"
+        const val ACTION_TRACK_POINT_UPDATE = "action_track_point_update"
+        const val ACTION_RECORDING_STOPPED = "action_recording_stopped"
+        const val ACTION_TRACK_ROTATED = "action_track_rotated"
+
+        const val EXTRA_LATITUDE = "extra_latitude"
+        const val EXTRA_LONGITUDE = "extra_longitude"
+        const val EXTRA_BUMP_INDEX = "extra_bump_index"
+        const val EXTRA_PREVIOUS_TRACK_POINTS = "extra_previous_track_points"
 
         private const val NOTIFICATION_ID = 1
 

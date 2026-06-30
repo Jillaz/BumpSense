@@ -16,7 +16,6 @@ import ru.razrabozavr.bumpsense.domain.model.Track
 
 @Dao
 interface TrackDao {
-
     // ✅ НОВОЕ: Загрузка всех треков с точками одним запросом (решение N+1)
     @Transaction
     @Query("SELECT * FROM tracks ORDER BY id DESC")
@@ -60,6 +59,10 @@ interface TrackDao {
 
     @Query("DELETE FROM tracks")
     suspend fun deleteAllTracks()
+
+    // ✅ ИСПРАВЛЕНИЕ (Вариант Б): Обновление метаданных трека без пересохранения точек
+    @Query("UPDATE tracks SET endTime = :endTime, distance = :distance WHERE id = :trackId")
+    suspend fun updateTrackMetadata(trackId: Long, endTime: Long?, distance: Double)
 
     // ✅ НОВОЕ: Атомарная вставка трека с точками
     @Transaction
