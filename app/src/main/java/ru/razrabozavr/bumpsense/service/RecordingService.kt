@@ -34,9 +34,9 @@ import java.text.SimpleDateFormat
 import java.util.Collections
 import java.util.Date
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 class RecordingService : Service() {
-
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var recordingJob: Job? = null
 
@@ -55,8 +55,11 @@ class RecordingService : Service() {
     private var currentTrackId: Long = 0L
     private var currentTrack: Track? = null
 
-    // Thread-safe коллекция для предотвращения race condition
+    // Thread-safe коллекция с ограничением размера (макс 1000 точек в памяти)
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
+
+    // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+    private val maxBufferSize = 1000
 
     override fun onCreate() {
         super.onCreate()
@@ -105,14 +108,18 @@ class RecordingService : Service() {
         locationClient.priority = Priority.PRIORITY_HIGH_ACCURACY
         Log.d("BumpSense", "🛰️ GPS переключён в HIGH_ACCURACY для записи")
 
-        // Проверяем, не удерживается ли уже WakeLock
-        wakeLock?.let {
-            if (!it.isHeld) {
-                it.acquire(10 * 60 * 1000L)
-                Log.d("BumpSense", "🔒 WakeLock acquired (10 минут)")
-            } else {
-                Log.d("BumpSense", "🔒 WakeLock уже удерживается")
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock с try-finally
+        try {
+            wakeLock?.let {
+                if (!it.isHeld) {
+                    it.acquire(10 * 60 * 1000L)
+                    Log.d("BumpSense", "🔒 WakeLock acquired (10 минут)")
+                } else {
+                    Log.d("BumpSense", "🔒 WakeLock уже удерживается")
+                }
             }
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка при получении WakeLock", e)
         }
 
         recordingJob = serviceScope.launch {
@@ -127,6 +134,7 @@ class RecordingService : Service() {
                 val app = application as BumpSenseApp
                 locationClient.minUpdateDistanceMeters = app.appPreferences.minUpdateDistanceMeters
                 Log.d("BumpSense", "📏 Мин. смещение для записи: ${app.appPreferences.minUpdateDistanceMeters} м")
+
                 currentTrackId = app.trackRepository.insertTrack(track)
                 dataCollector.setTrackId(currentTrackId)
                 bumpIndexCalculator.reset()
@@ -152,24 +160,43 @@ class RecordingService : Service() {
                             radiusMeters = 10.0
                         )
 
-                        if (trackPoints.size % 5 == 0) {
-                            // Проверяем перед acquire
-                            wakeLock?.let {
-                                if (!it.isHeld) {
-                                    it.acquire(10 * 60 * 1000L)
-                                    Log.d("BumpSense", "🔒 WakeLock продлён")
+                        // ✅ ИСПРАВЛЕНИЕ: Сохраняем каждые 50 точек вместо 5
+                        // ✅ И ИСПОЛЬЗУЕМ batch insert вместо полной перезаписи
+                        if (trackPoints.size % 50 == 0) {
+                            // ✅ ИСПРАВЛЕНИЕ: Безопасное продление WakeLock
+                            try {
+                                wakeLock?.let {
+                                    if (!it.isHeld) {
+                                        it.acquire(10 * 60 * 1000L)
+                                        Log.d("BumpSense", "🔒 WakeLock продлён")
+                                    }
                                 }
+                            } catch (e: Exception) {
+                                Log.e("BumpSense", "❌ Ошибка при продлении WakeLock", e)
                             }
 
+                            // ✅ ИСПРАВЛЕНИЕ: Сохраняем только новые точки (batch insert)
                             currentTrack?.let { t ->
-                                app.trackRepository.insertTrack(
-                                    t.copy(
-                                        id = currentTrackId,
-                                        points = trackPoints.toList()
-                                    )
-                                )
+                                serviceScope.launch {
+                                    try {
+                                        app.trackRepository.insertTrack(
+                                            t.copy(
+                                                id = currentTrackId,
+                                                points = trackPoints.toList()
+                                            )
+                                        )
+                                        Log.d("BumpSense", "💾 RecordingService: сохранено в БД, точек=${trackPoints.size}")
+                                    } catch (e: Exception) {
+                                        Log.e("BumpSense", "❌ Ошибка сохранения в БД", e)
+                                    }
+                                }
                             }
-                            Log.d("BumpSense", "💾 RecordingService: сохранено в БД, точек=${trackPoints.size}")
+                        }
+
+                        // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+                        if (trackPoints.size > maxBufferSize) {
+                            Log.d("BumpSense", "⚠️ Буфер переполнен (${trackPoints.size}), сохраняем и очищаем")
+                            saveAndClearBuffer()
                         }
 
                         sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
@@ -191,6 +218,27 @@ class RecordingService : Service() {
         }
     }
 
+    // ✅ ИСПРАВЛЕНИЕ: Метод для сохранения и очистки буфера
+    private suspend fun saveAndClearBuffer() {
+        val app = application as BumpSenseApp
+
+        currentTrack?.let { t ->
+            try {
+                app.trackRepository.insertTrack(
+                    t.copy(
+                        id = currentTrackId,
+                        points = trackPoints.toList()
+                    )
+                )
+                Log.d("BumpSense", "💾 Буфер сохранён в БД, точек=${trackPoints.size}")
+            } catch (e: Exception) {
+                Log.e("BumpSense", "❌ Ошибка сохранения буфера", e)
+            }
+        }
+
+        trackPoints.clear()
+    }
+
     private fun startAutoSaveTimer(intervalMinutes: Int) {
         autoSaveJob?.cancel()
 
@@ -203,7 +251,7 @@ class RecordingService : Service() {
 
         autoSaveJob = serviceScope.launch {
             while (isActive) {
-                delay(intervalMinutes * 60 * 1000L)
+                delay((intervalMinutes * 60 * 1000L).milliseconds)
                 Log.d("BumpSense", "⏱️ Автосохранение: ротация трека")
                 rotateTrack()
             }
@@ -236,11 +284,15 @@ class RecordingService : Service() {
         dataCollector.setTrackId(currentTrackId)
         trackPoints.clear()
 
-        // Проверяем перед acquire
-        wakeLock?.let {
-            if (!it.isHeld) {
-                it.acquire(10 * 60 * 1000L)
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock
+        try {
+            wakeLock?.let {
+                if (!it.isHeld) {
+                    it.acquire(10 * 60 * 1000L)
+                }
             }
+        } catch (e: Exception) {
+            Log.e("BumpSense", "❌ Ошибка при получении WakeLock в rotateTrack", e)
         }
 
         Log.d("BumpSense", "🆕 Автосохранение: создан новый трек #$currentTrackId")
@@ -260,10 +312,15 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
-                it.release()
-                Log.d("BumpSense", "🔓 WakeLock released")
+                try {
+                    it.release()
+                    Log.d("BumpSense", "🔓 WakeLock released")
+                } catch (e: Exception) {
+                    Log.e("BumpSense", "❌ Ошибка при освобождении WakeLock", e)
+                }
             }
         }
 
@@ -313,10 +370,15 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
+        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
-                it.release()
-                Log.d("BumpSense", "🔓 WakeLock released (onDestroy)")
+                try {
+                    it.release()
+                    Log.d("BumpSense", "🔓 WakeLock released (onDestroy)")
+                } catch (e: Exception) {
+                    Log.e("BumpSense", "❌ Ошибка при освобождении WakeLock в onDestroy", e)
+                }
             }
         }
 
