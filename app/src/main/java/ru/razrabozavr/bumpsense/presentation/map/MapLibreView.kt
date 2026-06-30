@@ -28,6 +28,7 @@ import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.FeatureCollection
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun MapLibreView(
@@ -130,7 +131,7 @@ fun MapLibreView(
 
     // ✅ НОВОЕ: Проверка загрузки стиля с таймаутом
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(5000)  // 5 секунд таймаут
+        kotlinx.coroutines.delay(5000.milliseconds)  // 5 секунд таймаут
         if (!styleLoaded) {
             Log.e("BumpSense", "❌ Таймаут загрузки стиля карты (5 секунд)")
             onStyleLoadError("Не удалось загрузить стиль карты. Проверьте файл style.json в assets.")
@@ -159,14 +160,19 @@ fun MapLibreView(
     }
 
     // Авто-центрирование только когда autoFollow = true
+    // ✅ ИСПРАВЛЕНИЕ: Обновляем LocationComponent и центрируем камеру
     LaunchedEffect(autoFollow, currentLocation?.latitude, currentLocation?.longitude) {
-        if (!autoFollow) return@LaunchedEffect
+        val map = mapLibreMap ?: return@LaunchedEffect
+        val location = currentLocation ?: return@LaunchedEffect
 
-        val map = mapLibreMap
-        if (map != null && currentLocation != null) {
-            Log.d("BumpSense", "🔄 Авто-наведение: ${currentLocation.latitude}, ${currentLocation.longitude}")
+        // Обновляем позицию на карте (синяя точка)
+        updateLocationComponent(map, location)
+
+        // Авто-центрирование только когда autoFollow = true
+        if (autoFollow) {
+            Log.d("BumpSense", "🔄 Авто-наведение: ${location.latitude}, ${location.longitude}")
             val cameraPosition = CameraPosition.Builder()
-                .target(LatLng(currentLocation.latitude, currentLocation.longitude))
+                .target(LatLng(location.latitude, location.longitude))
                 .zoom(MapConstants.DEFAULT_ZOOM)
                 .build()
             map.animateCamera(
@@ -267,7 +273,7 @@ private fun enableLocationComponent(
         val locationComponent = mapLibreMap.locationComponent
         locationComponent.activateLocationComponent(
             LocationComponentActivationOptions.builder(mapView.context, style)
-                .useDefaultLocationEngine(true)
+                .useDefaultLocationEngine(false)  // ✅ ИСПРАВЛЕНО: отключаем встроенный GPS
                 .build()
         )
 
@@ -288,6 +294,24 @@ private fun enableLocationComponent(
         Log.e("BumpSense", "❌ Нет разрешения на местоположение", e)
     } catch (e: Exception) {
         Log.e("BumpSense", "❌ Ошибка активации LocationComponent", e)
+    }
+}
+
+// ✅ НОВЫЙ МЕТОД: Ручное обновление позиции из внешних данных
+private fun updateLocationComponent(
+    mapLibreMap: MapLibreMap,
+    location: Location?
+) {
+    if (location == null) return
+
+    try {
+        val locationComponent = mapLibreMap.locationComponent
+        if (locationComponent.isLocationComponentActivated) {
+            locationComponent.forceLocationUpdate(location)
+            Log.d("BumpSense", "📍 LocationComponent обновлён: ${location.latitude}, ${location.longitude}")
+        }
+    } catch (e: Exception) {
+        Log.e("BumpSense", "❌ Ошибка обновления LocationComponent", e)
     }
 }
 
