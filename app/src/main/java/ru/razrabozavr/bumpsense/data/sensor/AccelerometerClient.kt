@@ -11,11 +11,18 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlin.math.sqrt
 
 class AccelerometerClient(context: Context) {
+    // ✅ ИСПРАВЛЕНИЕ: Используем applicationContext для предотвращения утечек памяти
+    private val sensorManager = context.applicationContext
+        .getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
-    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
     private val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
 
-    fun getAccelerationUpdates(sampleRateUs: Int = SensorManager.SENSOR_DELAY_FASTEST): Flow<Float> = callbackFlow {
+    // ✅ ИСПРАВЛЕНИЕ: Оптимальная частота опроса 15Hz (66666 мкс)
+    // SENSOR_DELAY_FASTEST (~200Hz) избыточен для расчёта неровностей
+    // 15Hz достаточно для детекции ям и неровностей на скорости до 120 км/ч
+    private val sampleRateUs: Int = 1_000_000 / 15  // 66666 мкс ≈ 15Hz
+
+    fun getAccelerationUpdates(): Flow<Float> = callbackFlow {
         if (accelerometer == null) {
             close(IllegalStateException("Accelerometer not available"))
             return@callbackFlow
@@ -37,6 +44,7 @@ class AccelerometerClient(context: Context) {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
 
+        // ✅ ИСПРАВЛЕНИЕ: Используем оптимальную частоту 15Hz вместо SENSOR_DELAY_FASTEST
         sensorManager.registerListener(listener, accelerometer, sampleRateUs)
 
         awaitClose {
