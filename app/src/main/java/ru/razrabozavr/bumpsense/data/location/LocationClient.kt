@@ -1,10 +1,12 @@
 package ru.razrabozavr.bumpsense.data.location
 
-import android.annotation.SuppressLint
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -18,6 +20,8 @@ import kotlinx.coroutines.flow.callbackFlow
 /**
  * Клиент для получения обновлений геолокации.
  * Поддерживает динамическое переключение приоритета GPS для экономии батареи.
+ *
+ * ✅ ИСПРАВЛЕНИЕ: Явная проверка разрешений перед запросом GPS
  */
 class LocationClient(
     private val context: Context
@@ -31,8 +35,27 @@ class LocationClient(
     // Минимальное расстояние для обновления
     var minUpdateDistanceMeters: Float = 0f
 
-    @SuppressLint("MissingPermission")
+    /**
+     * ✅ ИСПРАВЛЕНИЕ: Проверяем разрешения перед запросом GPS
+     */
     fun getLocationUpdates(intervalMs: Long): Flow<Location> = callbackFlow {
+        // ✅ ИСПРАВЛЕНИЕ: Явная проверка разрешений
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasCoarseLocation = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFineLocation && !hasCoarseLocation) {
+            Log.e("LocationClient", "❌ Нет разрешений на локацию (FINE или COARSE)")
+            close(SecurityException("Location permission not granted"))
+            return@callbackFlow
+        }
+
         val request = LocationRequest.Builder(priority, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs / 2)
             .setMinUpdateDistanceMeters(minUpdateDistanceMeters)
@@ -54,7 +77,10 @@ class LocationClient(
         try {
             fusedLocationClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
         } catch (e: SecurityException) {
-            Log.e("LocationClient", "❌ Нет разрешения на локацию", e)
+            Log.e("LocationClient", "❌ SecurityException при запросе обновлений", e)
+            close(e)
+        } catch (e: Exception) {
+            Log.e("LocationClient", "❌ Неизвестная ошибка при запросе обновлений", e)
             close(e)
         }
 
@@ -64,19 +90,50 @@ class LocationClient(
         }
     }
 
-    @SuppressLint("MissingPermission")
+    /**
+     * ✅ ИСПРАВЛЕНИЕ: Проверяем разрешения и улучшена обработка ошибок
+     */
     fun getLastKnownLocation(): Flow<Location?> = callbackFlow {
+        // ✅ ИСПРАВЛЕНИЕ: Явная проверка разрешений
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasCoarseLocation = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!hasFineLocation && !hasCoarseLocation) {
+            Log.e("LocationClient", "❌ Нет разрешений на локацию для getLastKnownLocation")
+            trySend(null).isSuccess
+            close()
+            return@callbackFlow
+        }
+
         try {
-            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                trySend(location).isSuccess
-                close()
-            }.addOnFailureListener { e ->
-                Log.e("LocationClient", "❌ Ошибка получения последней локации", e)
-                trySend(null).isSuccess
-                close()
-            }
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { location ->
+                    trySend(location).isSuccess
+                    close()
+                }
+                .addOnFailureListener { e ->
+                    Log.e("LocationClient", "❌ Ошибка получения последней локации", e)
+                    trySend(null).isSuccess
+                    close()
+                }
+                .addOnCanceledListener {
+                    Log.w("LocationClient", "⚠️ Запрос последней локации отменён")
+                    trySend(null).isSuccess
+                    close()
+                }
         } catch (e: SecurityException) {
-            Log.e("LocationClient", "❌ Нет разрешения на локацию", e)
+            Log.e("LocationClient", "❌ SecurityException при getLastLocation", e)
+            trySend(null).isSuccess
+            close()
+        } catch (e: Exception) {
+            Log.e("LocationClient", "❌ Неизвестная ошибка при getLastLocation", e)
             trySend(null).isSuccess
             close()
         }
