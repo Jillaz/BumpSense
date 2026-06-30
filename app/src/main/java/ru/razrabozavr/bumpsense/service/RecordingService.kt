@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -54,7 +55,7 @@ class RecordingService : Service() {
     private var currentTrackId: Long = 0L
     private var currentTrack: Track? = null
 
-    // ✅ ИСПРАВЛЕНИЕ: Thread-safe коллекция для предотвращения race condition
+    // Thread-safe коллекция для предотвращения race condition
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
 
     override fun onCreate() {
@@ -100,7 +101,11 @@ class RecordingService : Service() {
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-        // ✅ ИСПРАВЛЕНИЕ: Проверяем, не удерживается ли уже WakeLock
+        // ✅ ИСПРАВЛЕНИЕ: Переключаем GPS в режим высокой точности для записи
+        locationClient.priority = Priority.PRIORITY_HIGH_ACCURACY
+        Log.d("BumpSense", "🛰️ GPS переключён в HIGH_ACCURACY для записи")
+
+        // Проверяем, не удерживается ли уже WakeLock
         wakeLock?.let {
             if (!it.isHeld) {
                 it.acquire(10 * 60 * 1000L)
@@ -148,7 +153,7 @@ class RecordingService : Service() {
                         )
 
                         if (trackPoints.size % 5 == 0) {
-                            // ✅ ИСПРАВЛЕНИЕ: Проверяем перед acquire
+                            // Проверяем перед acquire
                             wakeLock?.let {
                                 if (!it.isHeld) {
                                     it.acquire(10 * 60 * 1000L)
@@ -231,7 +236,7 @@ class RecordingService : Service() {
         dataCollector.setTrackId(currentTrackId)
         trackPoints.clear()
 
-        // ✅ ИСПРАВЛЕНИЕ: Проверяем перед acquire
+        // Проверяем перед acquire
         wakeLock?.let {
             if (!it.isHeld) {
                 it.acquire(10 * 60 * 1000L)

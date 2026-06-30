@@ -40,7 +40,13 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private fun startCollecting() {
-        collectingJob?.cancel()
+        // ✅ ИСПРАВЛЕНИЕ: Проверка чтобы избежать двойного запуска
+        if (collectingJob?.isActive == true) {
+            Log.d("AccelerometerViewModel", "⚠️ Сбор данных уже запущен")
+            return
+        }
+
+        Log.d("AccelerometerViewModel", "🚀 Запуск сбора данных акселерометра")
 
         collectingJob = accelerometerClient.getAccelerationUpdates()
             .onEach { magnitude ->
@@ -62,11 +68,32 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
             .launchIn(viewModelScope)
     }
 
-    // ✅ НОВЫЙ МЕТОД: Остановка сбора данных
+    // ✅ Остановка сбора данных для экономии батареи
     fun stopCollecting() {
+        Log.d("AccelerometerViewModel", "⏹️ Остановка сбора данных акселерометра")
+
         collectingJob?.cancel()
         collectingJob = null
-        Log.d("AccelerometerViewModel", "⏹️ Сбор данных остановлен")
+
+        maxBumpIndexResetJob?.cancel()
+        maxBumpIndexResetJob = null
+
+        // ✅ Сброс состояния при остановке
+        _accelerometerData.update {
+            AccelerometerData(
+                magnitude = 0f,
+                bumpIndex = 0,
+                maxBumpIndex = 0,
+                isAvailable = true
+            )
+        }
+    }
+
+    // ✅ НОВЫЙ МЕТОД: Перезапуск сбора данных
+    fun restartCollecting() {
+        Log.d("AccelerometerViewModel", "🔄 Перезапуск сбора данных")
+        stopCollecting()
+        startCollecting()
     }
 
     private fun updateMaxBumpIndex(newBumpIndex: Int) {
@@ -92,7 +119,9 @@ class AccelerometerViewModel(application: Application) : AndroidViewModel(applic
 
     override fun onCleared() {
         super.onCleared()
-        maxBumpIndexResetJob?.cancel()
-        collectingJob?.cancel()
+        Log.d("AccelerometerViewModel", "🔚 AccelerometerViewModel: onCleared")
+
+        // ✅ Используем метод stopCollecting для полной очистки
+        stopCollecting()
     }
 }

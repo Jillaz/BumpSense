@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
 import android.os.Looper
+import android.util.Log
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -13,58 +14,96 @@ import com.google.android.gms.location.Priority
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
 
-class LocationClient(private val context: Context) {
-
+/**
+ * Клиент для получения обновлений геолокации.
+ * Поддерживает динамическое переключение приоритета GPS для экономии батареи.
+ */
+class LocationClient(
+    private val context: Context
+) {
     private val fusedLocationClient: FusedLocationProviderClient =
         LocationServices.getFusedLocationProviderClient(context)
 
-    // ✅ Настраиваемое минимальное смещение (по умолчанию 5 м)
-    var minUpdateDistanceMeters: Float = 5f
+    // ✅ Настраиваемый приоритет GPS
+    var priority: Int = Priority.PRIORITY_HIGH_ACCURACY
+
+    // Минимальное расстояние для обновления
+    var minUpdateDistanceMeters: Float = 0f
 
     @SuppressLint("MissingPermission")
-    fun getLocationUpdates(intervalMs: Long = 2000L): Flow<Location> = callbackFlow {
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
+    fun getLocationUpdates(intervalMs: Long): Flow<Location> = callbackFlow {
+        val request = LocationRequest.Builder(priority, intervalMs)
             .setMinUpdateIntervalMillis(intervalMs / 2)
-            .setWaitForAccurateLocation(false)
-            .apply {
-                // ✅ Если значение > 0 — включаем фильтр, иначе фильтр отключён
-                if (minUpdateDistanceMeters > 0f) {
-                    setMinUpdateDistanceMeters(minUpdateDistanceMeters)
-                }
-            }
+            .setMinUpdateDistanceMeters(minUpdateDistanceMeters)
             .build()
+
+        Log.d(
+            "LocationClient",
+            "🛰️ Запуск GPS: interval=${intervalMs}ms, priority=${priorityToString(priority)}, minDistance=${minUpdateDistanceMeters}m"
+        )
 
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 result.lastLocation?.let { location ->
-                    trySend(location)
+                    trySend(location).isSuccess
                 }
             }
         }
 
-        fusedLocationClient.requestLocationUpdates(
-            locationRequest,
-            callback,
-            Looper.getMainLooper()
-        )
+        try {
+            fusedLocationClient.requestLocationUpdates(request, callback, Looper.getMainLooper())
+        } catch (e: SecurityException) {
+            Log.e("LocationClient", "❌ Нет разрешения на локацию", e)
+            close(e)
+        }
 
         awaitClose {
+            Log.d("LocationClient", "🛑 Остановка GPS")
             fusedLocationClient.removeLocationUpdates(callback)
         }
     }
 
     @SuppressLint("MissingPermission")
-    suspend fun getCurrentLocation(): Location? {
-        return try {
-            val task = fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                null
-            )
-            task.await()
-        } catch (_: Exception) {
-            null
+    fun getLastKnownLocation(): Flow<Location?> = callbackFlow {
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                trySend(location).isSuccess
+                close()
+            }.addOnFailureListener { e ->
+                Log.e("LocationClient", "❌ Ошибка получения последней локации", e)
+                trySend(null).isSuccess
+                close()
+            }
+        } catch (e: SecurityException) {
+            Log.e("LocationClient", "❌ Нет разрешения на локацию", e)
+            trySend(null).isSuccess
+            close()
+        }
+
+        awaitClose { }
+    }
+
+    /**
+     * Переключает режим работы GPS в зависимости от активности.
+     * @param isRecording true - запись трека (высокая точность), false - просмотр (экономия батареи)
+     */
+    fun setRecordingMode(isRecording: Boolean) {
+        priority = if (isRecording) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+        Log.d("LocationClient", "🔄 Режим GPS: ${priorityToString(priority)}")
+    }
+
+    private fun priorityToString(priority: Int): String {
+        return when (priority) {
+            Priority.PRIORITY_HIGH_ACCURACY -> "HIGH_ACCURACY"
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY -> "BALANCED_POWER"
+            Priority.PRIORITY_LOW_POWER -> "LOW_POWER"
+            Priority.PRIORITY_PASSIVE -> "PASSIVE"
+            else -> "UNKNOWN"
         }
     }
 }

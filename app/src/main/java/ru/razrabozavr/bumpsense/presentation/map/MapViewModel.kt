@@ -31,6 +31,7 @@ import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
 import ru.razrabozavr.bumpsense.service.RecordingService
+import com.google.android.gms.location.Priority
 
 data class MapUiState(
     val isRecording: Boolean = false,
@@ -221,9 +222,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
 
         val interval = appPreferences.gpsIntervalMs
-        // ✅ Применяем значение из настроек
+
+        // ✅ ИСПРАВЛЕНИЕ: Устанавливаем BALANCED_POWER для UI (экономия батареи)
+        locationClient.priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
         locationClient.minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
-        Log.d("BumpSense", "🚀 Запуск GPS с интервалом ${interval}мс, мин.смещение=${appPreferences.minUpdateDistanceMeters}м")
+
+        Log.d(
+            "BumpSense",
+            "🚀 Запуск GPS для UI: interval=${interval}мс, priority=BALANCED_POWER, мин.смещение=${appPreferences.minUpdateDistanceMeters}м"
+        )
 
         locationJob = viewModelScope.launch {
             try {
