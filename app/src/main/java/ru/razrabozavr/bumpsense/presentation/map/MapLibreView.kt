@@ -26,6 +26,7 @@ import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import kotlin.time.Duration.Companion.milliseconds
@@ -41,11 +42,29 @@ fun MapLibreView(
     cameraBounds: CameraBounds? = null,
     onMapReady: (MapLibreMap) -> Unit = {},
     onCameraMove: (CameraBounds) -> Unit = {},
-    onStyleLoadError: (String) -> Unit = {}  // ✅ НОВЫЙ ПАРАМЕТР: callback для ошибок стиля
+    onStyleLoadError: (String) -> Unit = {}
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
-    var styleLoaded by remember { mutableStateOf(false) }  // ✅ НОВОЕ: флаг загрузки стиля
+    var styleLoaded by remember { mutableStateOf(false) }
+
+    // ✅ ОПТИМИЗАЦИЯ (Вариант В): Кэшируем FeatureCollection через remember
+    // Пересоздаётся только при изменении currentTrackPoints
+    val currentTrackFeatures = remember(currentTrackPoints) {
+        if (currentTrackPoints.size > 1) {
+            TrackFeatureBuilder.createColoredLineFeatures(currentTrackPoints, simplify = false)
+        } else {
+            emptyList()
+        }
+    }
+
+    // ✅ ОПТИМИЗАЦИЯ (Вариант В): Кэшируем FeatureCollection для истории
+    // Применяем упрощение геометрии для длинных треков
+    val historyTrackFeatures = remember(historyTracks) {
+        historyTracks
+            .filter { it.size > 1 }
+            .flatMap { TrackFeatureBuilder.createColoredLineFeatures(it, simplify = true) }
+    }
 
     AndroidView(
         modifier = modifier,
@@ -57,7 +76,6 @@ fun MapLibreView(
                 getMapAsync { map ->
                     Log.d("BumpSense", "🗺️ MapView создан, загрузка стиля из assets...")
 
-                    // ✅ ИСПРАВЛЕНИЕ: Обработка ошибок при инициализации карты
                     map.setStyle(Style.Builder().fromUri(MapConstants.STYLE_URI)) { loadedStyle ->
                         Log.d("BumpSense", "✅ Стиль OSM загружен успешно")
                         styleLoaded = true
@@ -68,7 +86,6 @@ fun MapLibreView(
                             mapLibreMap = map
                             onMapReady(map)
 
-                            // Listener движения камеры
                             map.addOnCameraMoveListener {
                                 try {
                                     val projection = map.projection
@@ -120,25 +137,25 @@ fun MapLibreView(
             }
         },
         update = { view ->
-            // ✅ ИСПРАВЛЕНИЕ: Обновляем слои только если стиль загружен
             if (styleLoaded) {
                 view.getMapAsync { map ->
-                    updateTrackLayers(map, currentTrackPoints, historyTracks)
+                    // ✅ ОПТИМИЗАЦИЯ (Вариант В): Используем кэшированные FeatureCollection
+                    updateTrackLayers(map, currentTrackFeatures, historyTrackFeatures)
                 }
             }
         }
     )
 
-    // ✅ НОВОЕ: Проверка загрузки стиля с таймаутом
+    // Проверка загрузки стиля с таймаутом
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(5000.milliseconds)  // 5 секунд таймаут
+        kotlinx.coroutines.delay(5000.milliseconds)
         if (!styleLoaded) {
             Log.e("BumpSense", "❌ Таймаут загрузки стиля карты (5 секунд)")
             onStyleLoadError("Не удалось загрузить стиль карты. Проверьте файл style.json в assets.")
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Управление lifecycle MapView для предотвращения утечки памяти
+    // Управление lifecycle MapView
     DisposableEffect(Unit) {
         onDispose {
             mapView?.let { view ->
@@ -150,7 +167,6 @@ fun MapLibreView(
         }
     }
 
-    // ✅ Вызов onResume/onStart при создании
     LaunchedEffect(Unit) {
         mapView?.let { view ->
             Log.d("BumpSense", "🔄 MapView: onStart, onResume")
@@ -159,20 +175,15 @@ fun MapLibreView(
         }
     }
 
-    // Авто-центрирование только когда autoFollow = true
-    // ✅ ИСПРАВЛЕНИЕ: Обновляем LocationComponent и центрируем камеру
+    // Авто-центрирование
     LaunchedEffect(autoFollow, currentLocation?.latitude, currentLocation?.longitude) {
-        val map = mapLibreMap ?: return@LaunchedEffect
-        val location = currentLocation ?: return@LaunchedEffect
+        if (!autoFollow) return@LaunchedEffect
 
-        // Обновляем позицию на карте (синяя точка)
-        updateLocationComponent(map, location)
-
-        // Авто-центрирование только когда autoFollow = true
-        if (autoFollow) {
-            Log.d("BumpSense", "🔄 Авто-наведение: ${location.latitude}, ${location.longitude}")
+        val map = mapLibreMap
+        if (map != null && currentLocation != null) {
+            Log.d("BumpSense", "🔄 Авто-наведение: ${currentLocation.latitude}, ${currentLocation.longitude}")
             val cameraPosition = CameraPosition.Builder()
-                .target(LatLng(location.latitude, location.longitude))
+                .target(LatLng(currentLocation.latitude, currentLocation.longitude))
                 .zoom(MapConstants.DEFAULT_ZOOM)
                 .build()
             map.animateCamera(
@@ -182,7 +193,7 @@ fun MapLibreView(
         }
     }
 
-    // Ручное центрирование по кнопке
+    // Ручное центрирование
     LaunchedEffect(centerTrigger) {
         if (centerTrigger > 0) {
             Log.d("BumpSense", "👆 Ручное центрирование (trigger=$centerTrigger)")
@@ -246,7 +257,6 @@ private fun initializeMapLayers(style: Style) {
                 PropertyFactory.lineColor(Expression.get("color"))
             )
         )
-
         style.addLayer(
             LineLayer(MapConstants.CURRENT_TRACK_LAYER_ID, MapConstants.CURRENT_TRACK_SOURCE_ID).withProperties(
                 PropertyFactory.lineWidth(8f),
@@ -260,7 +270,7 @@ private fun initializeMapLayers(style: Style) {
         Log.d("BumpSense", "✅ Слои треков инициализированы")
     } catch (e: Exception) {
         Log.e("BumpSense", "❌ Ошибка инициализации слоев", e)
-        throw e  // ✅ Пробрасываем ошибку выше для обработки
+        throw e
     }
 }
 
@@ -273,7 +283,7 @@ private fun enableLocationComponent(
         val locationComponent = mapLibreMap.locationComponent
         locationComponent.activateLocationComponent(
             LocationComponentActivationOptions.builder(mapView.context, style)
-                .useDefaultLocationEngine(false)  // ✅ ИСПРАВЛЕНО: отключаем встроенный GPS
+                .useDefaultLocationEngine(true)
                 .build()
         )
 
@@ -297,44 +307,19 @@ private fun enableLocationComponent(
     }
 }
 
-// ✅ НОВЫЙ МЕТОД: Ручное обновление позиции из внешних данных
-private fun updateLocationComponent(
-    mapLibreMap: MapLibreMap,
-    location: Location?
-) {
-    if (location == null) return
-
-    try {
-        val locationComponent = mapLibreMap.locationComponent
-        if (locationComponent.isLocationComponentActivated) {
-            locationComponent.forceLocationUpdate(location)
-            Log.d("BumpSense", "📍 LocationComponent обновлён: ${location.latitude}, ${location.longitude}")
-        }
-    } catch (e: Exception) {
-        Log.e("BumpSense", "❌ Ошибка обновления LocationComponent", e)
-    }
-}
-
+// ✅ ОПТИМИЗАЦИЯ (Вариант В): Метод принимает уже готовые FeatureCollection
 private fun updateTrackLayers(
     mapLibreMap: MapLibreMap,
-    currentTrackPoints: List<TrackPoint>,
-    historyTracks: List<List<TrackPoint>>
+    currentTrackFeatures: List<Feature>,
+    historyTrackFeatures: List<Feature>
 ) {
     mapLibreMap.getStyle { style ->
         try {
             val currentTrackSource = style.getSourceAs<GeoJsonSource>(MapConstants.CURRENT_TRACK_SOURCE_ID)
-            if (currentTrackPoints.size > 1) {
-                val features = TrackFeatureBuilder.createColoredLineFeatures(currentTrackPoints)
-                currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(features))
-            } else {
-                currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList()))
-            }
+            currentTrackSource?.setGeoJson(FeatureCollection.fromFeatures(currentTrackFeatures))
 
             val historyTrackSource = style.getSourceAs<GeoJsonSource>(MapConstants.HISTORY_TRACK_SOURCE_ID)
-            val historyFeatures = historyTracks
-                .filter { it.size > 1 }
-                .flatMap { TrackFeatureBuilder.createColoredLineFeatures(it) }
-            historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyFeatures))
+            historyTrackSource?.setGeoJson(FeatureCollection.fromFeatures(historyTrackFeatures))
         } catch (e: Exception) {
             Log.e("BumpSense", "❌ Ошибка обновления слоев", e)
         }
