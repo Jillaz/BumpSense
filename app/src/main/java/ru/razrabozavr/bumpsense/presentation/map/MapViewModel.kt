@@ -1,14 +1,9 @@
 package ru.razrabozavr.bumpsense.presentation.map
 
 import android.app.Application
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.location.Location
 import android.net.Uri
 import android.util.Log
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -21,9 +16,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
+import ru.razrabozavr.bumpsense.RecordingEvent
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.mapper.GeoJsonMapper
 import ru.razrabozavr.bumpsense.domain.model.Track
@@ -98,6 +96,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     private val pendingPointsLock = Any()
     private var trackPointsBatchJob: Job? = null
 
+    // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Job для подписки на события от RecordingService
+    private var recordingEventsJob: Job? = null
+
     // ===== НАСТРОЙКИ =====
     private val _settingsState = MutableStateFlow(
         SettingsState(
@@ -157,74 +158,84 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     }
     // ==========================
 
-    private val trackPointReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.action) {
-                RecordingService.ACTION_TRACK_POINT_UPDATE -> {
-                    val latitude = intent.getDoubleExtra(RecordingService.EXTRA_LATITUDE, 0.0)
-                    val longitude = intent.getDoubleExtra(RecordingService.EXTRA_LONGITUDE, 0.0)
-                    val bumpIndex = intent.getIntExtra(RecordingService.EXTRA_BUMP_INDEX, 0)
-
-                    val trackPoint = TrackPoint(
-                        id = 0,
-                        trackId = 0,
-                        latitude = latitude,
-                        longitude = longitude,
-                        timestamp = System.currentTimeMillis(),
-                        bumpIndex = bumpIndex,
-                        speed = 0f
-                    )
-
-                    // ✅ ИСПРАВЛЕНИЕ (Шаг 6): Отправляем точку в буфер для батчинга (дебаунс карты)
-                    synchronized(pendingPointsLock) {
-                        pendingPoints.add(trackPoint)
-                    }
-
-                    // ✅ ИСПРАВЛЕНИЕ (Шаг 2b): Обновляем currentLocation для синей точки на карте
-                    // Используем координаты из сервиса вместо своего GPS
-                    val location = Location("service").apply {
-                        this.latitude = latitude
-                        this.longitude = longitude
-                        time = System.currentTimeMillis()
-                    }
-                    _uiState.update { current ->
-                        current.copy(
-                            currentLocation = location,
-                            gpsStatus = GpsStatus.FOUND
-                        )
-                    }
-                }
-                RecordingService.ACTION_RECORDING_STOPPED -> {
-                    Log.d("BumpSense", "⏹️ Запись остановлена — перезапускаем GPS для UI")
-
-                    _uiState.update { current -> current.copy(isRecording = false) }
-
-                    // ✅ ИСПРАВЛЕНИЕ (Шаг 2b): Возвращаем GPS в UI после остановки записи
-                    startGpsTracking()
-
-                    val pendingUri = pendingExportUri
-                    if (pendingUri != null) {
-                        pendingExportUri = null
-                        Log.d("BumpSense", "📤 Выполняем отложенный экспорт")
-                        doExportAllTracks(pendingUri)
-                    } else {
-                        _uiState.update { current ->
-                            current.copy(snackbarMessage = "Запись маршрута завершена")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     init {
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         loadHistoryTracks()
-        registerReceiver()
         startGpsTracking()
 
         // ✅ ИСПРАВЛЕНИЕ (Шаг 6): Запускаем батчинг точек для дебаунса карты
         startTrackPointsBatching()
+
+        // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Подписываемся на события от RecordingService
+        subscribeToRecordingEvents()
+    }
+
+    /**
+     * ✅ ИСПРАВЛЕНИЕ (Шаг 9): Подписка на события от RecordingService через SharedFlow.
+     * Заменяет BroadcastReceiver для type-safe коммуникации.
+     */
+    private fun subscribeToRecordingEvents() {
+        val app = getApplication<BumpSenseApp>()
+        recordingEventsJob = app.recordingEvents
+            .onEach { event ->
+                when (event) {
+                    is RecordingEvent.TrackPointUpdate -> {
+                        val trackPoint = TrackPoint(
+                            id = 0,
+                            trackId = 0,
+                            latitude = event.latitude,
+                            longitude = event.longitude,
+                            timestamp = System.currentTimeMillis(),
+                            bumpIndex = event.bumpIndex,
+                            speed = 0f
+                        )
+
+                        // Отправляем точку в буфер для батчинга (дебаунс карты)
+                        synchronized(pendingPointsLock) {
+                            pendingPoints.add(trackPoint)
+                        }
+
+                        // Обновляем currentLocation для синей точки на карте
+                        val location = Location("service").apply {
+                            this.latitude = event.latitude
+                            this.longitude = event.longitude
+                            time = System.currentTimeMillis()
+                        }
+                        _uiState.update { current ->
+                            current.copy(
+                                currentLocation = location,
+                                gpsStatus = GpsStatus.FOUND
+                            )
+                        }
+                    }
+
+                    is RecordingEvent.RecordingStopped -> {
+                        Log.d("BumpSense", "⏹️ Запись остановлена — перезапускаем GPS для UI")
+
+                        _uiState.update { current -> current.copy(isRecording = false) }
+
+                        // Возвращаем GPS в UI после остановки записи
+                        startGpsTracking()
+
+                        val pendingUri = pendingExportUri
+                        if (pendingUri != null) {
+                            pendingExportUri = null
+                            Log.d("BumpSense", "📤 Выполняем отложенный экспорт")
+                            doExportAllTracks(pendingUri)
+                        } else {
+                            _uiState.update { current ->
+                                current.copy(snackbarMessage = "Запись маршрута завершена")
+                            }
+                        }
+                    }
+
+                    is RecordingEvent.TrackRotated -> {
+                        Log.d("BumpSense", "🆕 Трек ротирован, предыдущих точек: ${event.previousTrackPoints}")
+                        // Здесь можно добавить дополнительную логику при ротации трека
+                    }
+                }
+            }
+            .launchIn(viewModelScope)
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -243,7 +254,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     }
 
     private fun startGpsTracking() {
-        // ✅ ИСПРАВЛЕНИЕ (Шаг 2b): Если запись идёт — не запускаем свой GPS, ждём Broadcast от сервиса
+        // Если запись идёт — не запускаем свой GPS, ждём события от сервиса
         if (_uiState.value.isRecording) {
             Log.d("BumpSense", "⏸️ GPS для UI отключён (работает через RecordingService)")
             return
@@ -285,12 +296,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ (Шаг 6): Батчинг точек для дебаунса обновлений карты
+    // Батчинг точек для дебаунса обновлений карты
     private fun startTrackPointsBatching() {
         trackPointsBatchJob?.cancel()
         trackPointsBatchJob = viewModelScope.launch {
             while (true) {
-                delay(500) // ✅ Дебаунс 500мс
+                delay(500) // Дебаунс 500мс
 
                 val pointsToFlush: List<TrackPoint>
                 synchronized(pendingPointsLock) {
@@ -306,20 +317,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                 Log.d("BumpSense", "🎨 Карта обновлена: +${pointsToFlush.size} точек (батч)")
             }
         }
-    }
-
-    private fun registerReceiver() {
-        val filter = IntentFilter().apply {
-            addAction(RecordingService.ACTION_TRACK_POINT_UPDATE)
-            addAction(RecordingService.ACTION_RECORDING_STOPPED)
-        }
-
-        ContextCompat.registerReceiver(
-            getApplication(),
-            trackPointReceiver,
-            filter,
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
     }
 
     private fun loadHistoryTracks() {
@@ -350,7 +347,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
 
-            // ✅ ИСПРАВЛЕНИЕ (Шаг 2b): Останавливаем GPS в UI — теперь координаты берём из сервиса
+            // Останавливаем GPS в UI — теперь координаты берём из сервиса
             locationJob?.cancel()
             locationJob = null
             Log.d("BumpSense", "⏸️ GPS в UI остановлен (передаём управление RecordingService)")
@@ -721,7 +718,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         _uiState.update { current -> current.copy(snackbarMessage = null) }
     }
 
-    // ✅ НОВЫЙ МЕТОД: Показ ошибки загрузки стиля карты
     fun showStyleLoadError(message: String) {
         Log.e("BumpSense", "❌ Ошибка стиля карты: $message")
         _uiState.update { current ->
@@ -733,11 +729,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         locationJob?.cancel()
         cameraMoveJob?.cancel()
-        trackPointsBatchJob?.cancel()  // ✅ ИСПРАВЛЕНИЕ (Шаг 6): Отменяем батчинг
-        try {
-            getApplication<Application>().unregisterReceiver(trackPointReceiver)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        trackPointsBatchJob?.cancel()
+        recordingEventsJob?.cancel()  // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отменяем подписку на события
     }
 }

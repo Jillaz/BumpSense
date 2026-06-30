@@ -23,6 +23,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
 import ru.razrabozavr.bumpsense.R
+import ru.razrabozavr.bumpsense.RecordingEvent
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerClient
 import ru.razrabozavr.bumpsense.data.sensor.BumpIndexCalculator
@@ -58,7 +59,7 @@ class RecordingService : Service() {
     // Thread-safe коллекция с ограничением размера (макс 1000 точек в памяти)
     private val trackPoints = Collections.synchronizedList(mutableListOf<TrackPoint>())
 
-    // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+    // Ограничение размера буфера
     private val maxBufferSize = 1000
 
     override fun onCreate() {
@@ -104,11 +105,11 @@ class RecordingService : Service() {
     private fun startRecording() {
         Log.d("BumpSense", "🎬 RecordingService: startRecording")
 
-        // ✅ ИСПРАВЛЕНИЕ: Переключаем GPS в режим высокой точности для записи
+        // Переключаем GPS в режим высокой точности для записи
         locationClient.priority = Priority.PRIORITY_HIGH_ACCURACY
         Log.d("BumpSense", "🛰️ GPS переключён в HIGH_ACCURACY для записи")
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock с try-finally
+        // Безопасное получение WakeLock с try-finally
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -160,10 +161,10 @@ class RecordingService : Service() {
                             radiusMeters = 10.0
                         )
 
-                        // ✅ ИСПРАВЛЕНИЕ: Сохраняем каждые 50 точек вместо 5
-                        // ✅ И ИСПОЛЬЗУЕМ batch insert вместо полной перезаписи
+                        // Сохраняем каждые 50 точек вместо 5
+                        // И используем batch insert вместо полной перезаписи
                         if (trackPoints.size % 50 == 0) {
-                            // ✅ ИСПРАВЛЕНИЕ: Безопасное продление WakeLock
+                            // Безопасное продление WakeLock
                             try {
                                 wakeLock?.let {
                                     if (!it.isHeld) {
@@ -175,7 +176,7 @@ class RecordingService : Service() {
                                 Log.e("BumpSense", "❌ Ошибка при продлении WakeLock", e)
                             }
 
-                            // ✅ ИСПРАВЛЕНИЕ: Сохраняем только новые точки (batch insert)
+                            // Сохраняем только новые точки (batch insert)
                             currentTrack?.let { t ->
                                 serviceScope.launch {
                                     try {
@@ -193,18 +194,20 @@ class RecordingService : Service() {
                             }
                         }
 
-                        // ✅ ИСПРАВЛЕНИЕ: Ограничение размера буфера
+                        // Ограничение размера буфера
                         if (trackPoints.size > maxBufferSize) {
                             Log.d("BumpSense", "⚠️ Буфер переполнен (${trackPoints.size}), сохраняем и очищаем")
                             saveAndClearBuffer()
                         }
 
-                        sendBroadcast(Intent(ACTION_TRACK_POINT_UPDATE).apply {
-                            setPackage(packageName)
-                            putExtra(EXTRA_LATITUDE, trackPoint.latitude)
-                            putExtra(EXTRA_LONGITUDE, trackPoint.longitude)
-                            putExtra(EXTRA_BUMP_INDEX, trackPoint.bumpIndex)
-                        })
+                        // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow вместо Broadcast
+                        app.tryEmitRecordingEvent(
+                            RecordingEvent.TrackPointUpdate(
+                                latitude = trackPoint.latitude,
+                                longitude = trackPoint.longitude,
+                                bumpIndex = trackPoint.bumpIndex
+                            )
+                        )
                     }
                     .catch { e ->
                         Log.e("BumpSense", "❌ RecordingService: ошибка в потоке", e)
@@ -218,7 +221,7 @@ class RecordingService : Service() {
         }
     }
 
-    // ✅ ИСПРАВЛЕНИЕ: Метод для сохранения и очистки буфера
+    // Метод для сохранения и очистки буфера
     private suspend fun saveAndClearBuffer() {
         val app = application as BumpSenseApp
 
@@ -284,7 +287,7 @@ class RecordingService : Service() {
         dataCollector.setTrackId(currentTrackId)
         trackPoints.clear()
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное получение WakeLock
+        // Безопасное получение WakeLock
         try {
             wakeLock?.let {
                 if (!it.isHeld) {
@@ -297,10 +300,8 @@ class RecordingService : Service() {
 
         Log.d("BumpSense", "🆕 Автосохранение: создан новый трек #$currentTrackId")
 
-        sendBroadcast(Intent(ACTION_TRACK_ROTATED).apply {
-            setPackage(packageName)
-            putExtra(EXTRA_PREVIOUS_TRACK_POINTS, savedPointsCount)
-        })
+        // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow
+        app.tryEmitRecordingEvent(RecordingEvent.TrackRotated(savedPointsCount))
     }
 
     private fun stopRecording() {
@@ -312,7 +313,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
+        // Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {
@@ -340,9 +341,8 @@ class RecordingService : Service() {
                 Log.d("BumpSense", "💾 RecordingService: финальное сохранение, точек=${trackPoints.size}")
             }
 
-            sendBroadcast(Intent(ACTION_RECORDING_STOPPED).apply {
-                setPackage(packageName)
-            })
+            // ✅ ИСПРАВЛЕНИЕ (Шаг 9): Отправляем событие через SharedFlow
+            app.emitRecordingEvent(RecordingEvent.RecordingStopped)
         }
     }
 
@@ -370,7 +370,7 @@ class RecordingService : Service() {
         autoSaveJob?.cancel()
         autoSaveJob = null
 
-        // ✅ ИСПРАВЛЕНИЕ: Безопасное освобождение WakeLock
+        // Безопасное освобождение WakeLock
         wakeLock?.let {
             if (it.isHeld) {
                 try {
@@ -388,14 +388,6 @@ class RecordingService : Service() {
     companion object {
         const val ACTION_START_RECORDING = "action_start_recording"
         const val ACTION_STOP_RECORDING = "action_stop_recording"
-        const val ACTION_TRACK_POINT_UPDATE = "action_track_point_update"
-        const val ACTION_RECORDING_STOPPED = "action_recording_stopped"
-        const val ACTION_TRACK_ROTATED = "action_track_rotated"
-
-        const val EXTRA_LATITUDE = "extra_latitude"
-        const val EXTRA_LONGITUDE = "extra_longitude"
-        const val EXTRA_BUMP_INDEX = "extra_bump_index"
-        const val EXTRA_PREVIOUS_TRACK_POINTS = "extra_previous_track_points"
 
         private const val NOTIFICATION_ID = 1
 
