@@ -14,7 +14,6 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.viewModelScope
-import com.google.android.gms.location.Priority
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +27,7 @@ import ru.razrabozavr.bumpsense.data.edit.TrackEditManager
 import ru.razrabozavr.bumpsense.data.export.ExportResult
 import ru.razrabozavr.bumpsense.data.export.ImportResult
 import ru.razrabozavr.bumpsense.data.export.TrackExportImportManager
+import ru.razrabozavr.bumpsense.data.location.GpsTracker
 import ru.razrabozavr.bumpsense.data.location.LocationClient
 import ru.razrabozavr.bumpsense.data.settings.SettingsManager
 import ru.razrabozavr.bumpsense.domain.model.Track
@@ -36,7 +36,6 @@ import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
 import ru.razrabozavr.bumpsense.service.RecordingService
-import kotlin.time.Duration.Companion.milliseconds
 
 class MapViewModel(application: Application) : AndroidViewModel(application),
     DefaultLifecycleObserver {
@@ -56,8 +55,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     // ✅ РЕФАКТОРИНГ (Этап 5): Менеджер редактирования треков
     private val trackEditManager = TrackEditManager(trackRepository)
 
-    private val locationClient = LocationClient(application)
-    private var locationJob: Job? = null
+    // ✅ РЕФАКТОРИНГ (Этап 6): Менеджер GPS-трекинга
+    private val gpsTracker = GpsTracker(
+        locationClient = LocationClient(application),
+        appPreferences = appPreferences,
+        scope = viewModelScope
+    )
 
     private val _showExportDialog = MutableStateFlow(false)
     val showExportDialog: StateFlow<Boolean> = _showExportDialog.asStateFlow()
@@ -93,13 +96,12 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
     fun updateMinUpdateDistance(meters: Float) {
         settingsManager.updateMinUpdateDistance(meters)
-        locationClient.minUpdateDistanceMeters = meters
+        gpsTracker.setMinUpdateDistance(meters)
     }
 
     fun updateGpsInterval(intervalMs: Long) {
         settingsManager.updateGpsInterval(intervalMs)
-        locationJob?.cancel()
-        startGpsTracking()
+        gpsTracker.restart(_uiState.value.isRecording)
     }
 
     fun updateRadius(radius: Double) {
@@ -165,6 +167,24 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
+    // ✅ РЕФАКТОРИНГ (Этап 6): Подписка на GpsTracker для обновления UI
+    private fun observeGpsTracker() {
+        viewModelScope.launch {
+            gpsTracker.currentLocation.collect { location ->
+                // Обновляем currentLocation только если оно не переопределено из Broadcast
+                // (при записи currentLocation обновляется через trackPointReceiver)
+                if (location != null && !_uiState.value.isRecording) {
+                    _uiState.update { it.copy(currentLocation = location) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            gpsTracker.gpsStatus.collect { status ->
+                _uiState.update { it.copy(gpsStatus = status) }
+            }
+        }
+    }
+
     private val trackPointReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
@@ -187,16 +207,15 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         pendingPoints.add(trackPoint)
                     }
 
+                    // ✅ РЕФАКТОРИНГ (Этап 6): Обновляем локацию через GpsTracker
                     val location = Location("service").apply {
                         this.latitude = latitude
                         this.longitude = longitude
                         time = System.currentTimeMillis()
                     }
+                    gpsTracker.forceLocationUpdate(location)
                     _uiState.update { current ->
-                        current.copy(
-                            currentLocation = location,
-                            gpsStatus = GpsStatus.FOUND
-                        )
+                        current.copy(currentLocation = location)
                     }
                 }
                 RecordingService.ACTION_RECORDING_STOPPED -> {
@@ -204,7 +223,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
                     _uiState.update { it.copy(isRecording = false) }
 
-                    startGpsTracking()
+                    // ✅ РЕФАКТОРИНГ (Этап 6): Перезапуск GPS через GpsTracker
+                    gpsTracker.startTracking(isRecording = false)
 
                     val pendingUri = pendingExportUri
                     if (pendingUri != null) {
@@ -223,63 +243,17 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         loadHistoryTracks()
         registerReceiver()
-        startGpsTracking()
+        gpsTracker.startTracking(isRecording = false)
         startTrackPointsBatching()
+        observeGpsTracker()
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        Log.d("BumpSense", "▶️ App foreground — запускаем GPS для карты")
-        startGpsTracking()
+        gpsTracker.onLifecycleStart(_uiState.value.isRecording)
     }
 
     override fun onStop(owner: LifecycleOwner) {
-        if (!_uiState.value.isRecording) {
-            locationJob?.cancel()
-            locationJob = null
-            Log.d("BumpSense", "⏸️ GPS остановлен (приложение в фоне)")
-        } else {
-            Log.d("BumpSense", "⏸️ Приложение в фоне, но запись идёт")
-        }
-    }
-
-    private fun startGpsTracking() {
-        if (_uiState.value.isRecording) {
-            Log.d("BumpSense", "⏸️ GPS для UI отключён (работает через RecordingService)")
-            return
-        }
-
-        if (locationJob?.isActive == true) {
-            Log.d("BumpSense", "⏸️ GPS уже работает")
-            return
-        }
-
-        val interval = appPreferences.gpsIntervalMs
-
-        locationClient.priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        locationClient.minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
-
-        Log.d(
-            "BumpSense",
-            "🚀 Запуск GPS для UI: interval=${interval}мс, priority=BALANCED_POWER"
-        )
-
-        locationJob = viewModelScope.launch {
-            try {
-                locationClient.getLocationUpdates(interval).collect { location ->
-                    _uiState.update { current ->
-                        current.copy(
-                            currentLocation = location,
-                            gpsStatus = GpsStatus.FOUND
-                        )
-                    }
-                }
-            } catch (e: SecurityException) {
-                Log.e("BumpSense", "❌ Нет разрешения на GPS", e)
-                _uiState.update { it.copy(gpsStatus = GpsStatus.UNAVAILABLE) }
-            } catch (e: Exception) {
-                Log.e("BumpSense", "❌ Ошибка GPS", e)
-            }
-        }
+        gpsTracker.onLifecycleStop(_uiState.value.isRecording)
     }
 
     private fun startTrackPointsBatching() {
@@ -339,8 +313,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
 
-            locationJob?.cancel()
-            locationJob = null
+            // ✅ РЕФАКТОРИНГ (Этап 6): Останавливаем GPS в UI через GpsTracker
+            gpsTracker.stopTracking()
             Log.d("BumpSense", "⏸️ GPS в UI остановлен")
 
             RecordingService.startRecording(context)
@@ -360,9 +334,9 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     fun updatePermissionState(granted: Boolean) {
         _uiState.update { it.copy(locationPermissionGranted = granted) }
         if (granted) {
-            startGpsTracking()
+            gpsTracker.startTracking(_uiState.value.isRecording)
         } else {
-            _uiState.update { it.copy(gpsStatus = GpsStatus.UNAVAILABLE) }
+            gpsTracker.setStatus(GpsStatus.UNAVAILABLE)
         }
     }
 
@@ -533,7 +507,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
     override fun onCleared() {
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
-        locationJob?.cancel()
+        gpsTracker.release()
         trackPointsBatchJob?.cancel()
         try {
             getApplication<Application>().unregisterReceiver(trackPointReceiver)
