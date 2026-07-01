@@ -24,10 +24,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
+import ru.razrabozavr.bumpsense.data.edit.TrackEditManager
 import ru.razrabozavr.bumpsense.data.export.ExportResult
 import ru.razrabozavr.bumpsense.data.export.ImportResult
 import ru.razrabozavr.bumpsense.data.export.TrackExportImportManager
 import ru.razrabozavr.bumpsense.data.location.LocationClient
+import ru.razrabozavr.bumpsense.data.settings.SettingsManager
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
@@ -45,8 +47,14 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     private val trackRepository = (application as BumpSenseApp).trackRepository
     private val appPreferences = (application as BumpSenseApp).appPreferences
 
-    // ✅ РЕФАКТОРИНГ (Этап 3): Менеджер экспорта/импорта вынесен в отдельный класс
+    // ✅ РЕФАКТОРИНГ (Этап 3): Менеджер экспорта/импорта
     private val exportImportManager = TrackExportImportManager(application, trackRepository)
+
+    // ✅ РЕФАКТОРИНГ (Этап 4): Менеджер настроек
+    private val settingsManager = SettingsManager(appPreferences)
+
+    // ✅ РЕФАКТОРИНГ (Этап 5): Менеджер редактирования треков
+    private val trackEditManager = TrackEditManager(trackRepository)
 
     private val locationClient = LocationClient(application)
     private var locationJob: Job? = null
@@ -59,37 +67,18 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
     private var pendingExportUri: Uri? = null
 
-    private val _trackEditState = MutableStateFlow(TrackEditUiState())
-    val trackEditState: StateFlow<TrackEditUiState> = _trackEditState.asStateFlow()
-
-    private val _isEditMode = MutableStateFlow(false)
-    val isEditMode: StateFlow<Boolean> = _isEditMode.asStateFlow()
-
-    private val _cameraBounds = MutableStateFlow<CameraBounds?>(null)
-    val cameraBounds: StateFlow<CameraBounds?> = _cameraBounds.asStateFlow()
-
-    private val _currentMapBounds = MutableStateFlow<CameraBounds?>(null)
-    private var cameraMoveJob: Job? = null
-
     private val pendingPoints = mutableListOf<TrackPoint>()
     private val pendingPointsLock = Any()
     private var trackPointsBatchJob: Job? = null
 
-    // ===== НАСТРОЙКИ =====
-    private val _settingsState = MutableStateFlow(
-        SettingsState(
-            isDarkTheme = appPreferences.isDarkTheme,
-            gpsIntervalMs = appPreferences.gpsIntervalMs,
-            updateRadiusMeters = appPreferences.updateRadiusMeters,
-            accelerometerThreshold = appPreferences.accelerometerThreshold,
-            autoSaveIntervalMinutes = appPreferences.autoSaveIntervalMinutes,
-            minUpdateDistanceMeters = appPreferences.minUpdateDistanceMeters
-        )
-    )
-    val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
+    // ✅ РЕФАКТОРИНГ (Этап 4): Делегирование к SettingsManager
+    val settingsState: StateFlow<SettingsState> = settingsManager.settingsState
+    val isDarkTheme: StateFlow<Boolean> = settingsManager.isDarkTheme
 
-    private val _isDarkTheme = MutableStateFlow(appPreferences.isDarkTheme)
-    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+    // ✅ РЕФАКТОРИНГ (Этап 5): Делегирование к TrackEditManager
+    val trackEditState: StateFlow<TrackEditUiState> = trackEditManager.trackEditState
+    val isEditMode: StateFlow<Boolean> = trackEditManager.isEditMode
+    val cameraBounds: StateFlow<CameraBounds?> = trackEditManager.cameraBounds
 
     private val _isSettingsMode = MutableStateFlow(false)
     val isSettingsMode: StateFlow<Boolean> = _isSettingsMode.asStateFlow()
@@ -97,42 +86,84 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     fun enterSettingsMode() { _isSettingsMode.value = true }
     fun exitSettingsMode() { _isSettingsMode.value = false }
 
+    // ✅ РЕФАКТОРИНГ (Этап 4): Делегирование методов обновления настроек
     fun updateDarkTheme(isDark: Boolean) {
-        appPreferences.isDarkTheme = isDark
-        _settingsState.update { it.copy(isDarkTheme = isDark) }
-        _isDarkTheme.value = isDark
+        settingsManager.updateDarkTheme(isDark)
     }
 
     fun updateMinUpdateDistance(meters: Float) {
-        appPreferences.minUpdateDistanceMeters = meters
-        _settingsState.update { it.copy(minUpdateDistanceMeters = meters) }
+        settingsManager.updateMinUpdateDistance(meters)
         locationClient.minUpdateDistanceMeters = meters
-        Log.d("BumpSense", "📏 Мин. смещение изменено на $meters м")
     }
 
     fun updateGpsInterval(intervalMs: Long) {
-        appPreferences.gpsIntervalMs = intervalMs
-        _settingsState.update { it.copy(gpsIntervalMs = intervalMs) }
+        settingsManager.updateGpsInterval(intervalMs)
         locationJob?.cancel()
         startGpsTracking()
     }
 
     fun updateRadius(radius: Double) {
-        appPreferences.updateRadiusMeters = radius
-        _settingsState.update { it.copy(updateRadiusMeters = radius) }
+        settingsManager.updateRadius(radius)
     }
 
     fun updateAccelerometerThreshold(threshold: Float) {
-        appPreferences.accelerometerThreshold = threshold
-        _settingsState.update { it.copy(accelerometerThreshold = threshold) }
+        settingsManager.updateAccelerometerThreshold(threshold)
     }
 
     fun updateAutoSaveInterval(minutes: Int) {
-        appPreferences.autoSaveIntervalMinutes = minutes
-        _settingsState.update { it.copy(autoSaveIntervalMinutes = minutes) }
-        Log.d("BumpSense", "⏱️ Интервал автосохранения изменён на $minutes мин")
+        settingsManager.updateAutoSaveInterval(minutes)
     }
-    // ==========================
+
+    // ✅ РЕФАКТОРИНГ (Этап 5): Делегирование методов редактирования треков
+    fun enterEditMode() {
+        trackEditManager.enterEditMode()
+    }
+
+    fun exitEditMode() {
+        trackEditManager.exitEditMode()
+        viewModelScope.launch {
+            val allTracks = trackRepository.getAllTracks().first()
+            _uiState.update { currentState ->
+                currentState.copy(
+                    isHistoryVisible = true,
+                    historyTracks = allTracks.map { track -> track.points },
+                    currentTrackPoints = emptyList()
+                )
+            }
+        }
+    }
+
+    fun selectTrackTab(tab: TrackListTab) {
+        trackEditManager.selectTrackTab(tab)
+    }
+
+    fun updateVisibleArea(bounds: CameraBounds?) {
+        trackEditManager.updateVisibleArea(bounds)
+    }
+
+    fun focusOnTrack(trackId: Long) {
+        trackEditManager.focusOnTrack(trackId)
+        viewModelScope.launch {
+            val track = trackRepository.getTrackById(trackId)
+            if (track != null && track.points.isNotEmpty()) {
+                val bounds = trackEditManager.calculateTrackBounds(track.points)
+                _uiState.update { current ->
+                    current.copy(
+                        isHistoryVisible = true,
+                        currentTrackPoints = track.points,
+                        historyTracks = listOf(track.points)
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteTrack(track: Track) {
+        viewModelScope.launch {
+            trackEditManager.deleteTrack(track.id)
+            _uiState.update { it.copy(snackbarMessage = "Трек удален") }
+        }
+    }
 
     private val trackPointReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -295,12 +326,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         historyTracks = tracks.map { track -> track.points }
                     )
                 }
-                _trackEditState.update { currentState ->
-                    currentState.copy(
-                        allTracks = tracks,
-                        visibleTracks = filterTracksByVisibleArea(tracks, _currentMapBounds.value)
-                    )
-                }
             }
         }
     }
@@ -332,16 +357,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         _uiState.update { it.copy(isHistoryVisible = !it.isHistoryVisible) }
     }
 
-    fun addTrackPoint(point: TrackPoint) {
-        _uiState.update { current ->
-            current.copy(currentTrackPoints = current.currentTrackPoints + point)
-        }
-    }
-
-    fun clearCurrentTrack() {
-        _uiState.update { it.copy(currentTrackPoints = emptyList()) }
-    }
-
     fun updatePermissionState(granted: Boolean) {
         _uiState.update { it.copy(locationPermissionGranted = granted) }
         if (granted) {
@@ -365,7 +380,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ РЕФАКТОРИНГ (Этап 3): Делегируем работу менеджеру, оставляем только UI-логику
     private fun doExportAllTracks(uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isExporting = true, progressMessage = null) }
@@ -402,7 +416,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ РЕФАКТОРИНГ (Этап 3): Делегируем работу менеджеру
     fun importTracks(uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isImporting = true, progressMessage = null) }
@@ -439,7 +452,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ✅ РЕФАКТОРИНГ (Этап 3): Делегируем работу менеджеру
     fun appendTracks(uri: Uri) {
         viewModelScope.launch {
             _uiState.update { it.copy(isImporting = true, progressMessage = null) }
@@ -484,145 +496,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         }
     }
 
-    // ===== РЕДАКТИРОВАНИЕ ТРЕКОВ =====
-
-    fun enterEditMode() {
-        _isEditMode.value = true
-        viewModelScope.launch {
-            val allTracks = trackRepository.getAllTracks().first()
-            _trackEditState.update { current ->
-                current.copy(
-                    allTracks = allTracks,
-                    visibleTracks = filterTracksByVisibleArea(allTracks, _currentMapBounds.value),
-                    currentTab = TrackListTab.ALL,
-                    focusedTrackId = null
-                )
-            }
-        }
-    }
-
-    fun exitEditMode() {
-        _isEditMode.value = false
-        _trackEditState.update { it.copy(focusedTrackId = null) }
-        _cameraBounds.value = null
-
-        viewModelScope.launch {
-            val allTracks = trackRepository.getAllTracks().first()
-            _uiState.update { currentState ->
-                currentState.copy(
-                    isHistoryVisible = true,
-                    historyTracks = allTracks.map { track -> track.points },
-                    currentTrackPoints = emptyList()
-                )
-            }
-        }
-    }
-
-    fun selectTrackTab(tab: TrackListTab) {
-        _trackEditState.update { it.copy(currentTab = tab) }
-    }
-
-    fun updateVisibleArea(bounds: CameraBounds?) {
-        _currentMapBounds.value = bounds
-
-        if (_isEditMode.value) {
-            cameraMoveJob?.cancel()
-            cameraMoveJob = viewModelScope.launch {
-                delay(300.milliseconds)
-                val allTracks = trackRepository.getAllTracks().first()
-                _trackEditState.update { current ->
-                    current.copy(
-                        visibleTracks = filterTracksByVisibleArea(allTracks, bounds)
-                    )
-                }
-            }
-        }
-    }
-
-    private fun filterTracksByVisibleArea(
-        allTracks: List<Track>,
-        bounds: CameraBounds?
-    ): List<Track> {
-        if (bounds == null) return emptyList()
-
-        return allTracks.filter { track ->
-            track.points.any { point ->
-                point.latitude in bounds.minLat..bounds.maxLat &&
-                        point.longitude in bounds.minLon..bounds.maxLon
-            }
-        }
-    }
-
-    fun focusOnTrack(trackId: Long) {
-        viewModelScope.launch {
-            val track = trackRepository.getTrackById(trackId)
-            if (track != null && track.points.isNotEmpty()) {
-                _trackEditState.update { it.copy(focusedTrackId = trackId) }
-
-                val bounds = calculateTrackBounds(track.points)
-                _cameraBounds.value = bounds
-
-                _uiState.update { current ->
-                    current.copy(
-                        isHistoryVisible = true,
-                        currentTrackPoints = track.points,
-                        historyTracks = listOf(track.points)
-                    )
-                }
-            }
-        }
-    }
-
-    fun deleteTrack(track: Track) {
-        viewModelScope.launch {
-            trackRepository.deleteTrack(track.id)
-            val updatedTracks = _trackEditState.value.allTracks.filter { t -> t.id != track.id }
-            _trackEditState.update { current ->
-                current.copy(
-                    allTracks = updatedTracks,
-                    visibleTracks = filterTracksByVisibleArea(updatedTracks, _currentMapBounds.value)
-                )
-            }
-
-            if (_trackEditState.value.focusedTrackId == track.id) {
-                _trackEditState.update { it.copy(focusedTrackId = null) }
-                _cameraBounds.value = null
-            }
-
-            _uiState.update { it.copy(snackbarMessage = "Трек удален") }
-        }
-    }
-
-    fun clearTrackFocus() {
-        _trackEditState.update { it.copy(focusedTrackId = null) }
-        _cameraBounds.value = null
-        _uiState.update { it.copy(isHistoryVisible = true) }
-    }
-
-    private fun calculateTrackBounds(points: List<TrackPoint>): CameraBounds {
-        var minLat = Double.MAX_VALUE
-        var maxLat = -Double.MAX_VALUE
-        var minLon = Double.MAX_VALUE
-        var maxLon = -Double.MAX_VALUE
-
-        points.forEach { point ->
-            if (point.latitude < minLat) minLat = point.latitude
-            if (point.latitude > maxLat) maxLat = point.latitude
-            if (point.longitude < minLon) minLon = point.longitude
-            if (point.longitude > maxLon) maxLon = point.longitude
-        }
-
-        val latPadding = (maxLat - minLat) * 0.1
-        val lonPadding = (maxLon - minLon) * 0.1
-
-        return CameraBounds(
-            minLat = minLat - latPadding,
-            maxLat = maxLat + latPadding,
-            minLon = minLon - lonPadding,
-            maxLon = maxLon + lonPadding
-        )
-    }
-
     fun setShowClearDbDialog(show: Boolean) {
         _showClearDbDialog.value = show
     }
@@ -636,12 +509,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                         historyTracks = emptyList(),
                         currentTrackPoints = emptyList(),
                         snackbarMessage = "База данных полностью очищена"
-                    )
-                }
-                _trackEditState.update { current ->
-                    current.copy(
-                        allTracks = emptyList(),
-                        visibleTracks = emptyList()
                     )
                 }
             } catch (e: Exception) {
@@ -667,7 +534,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     override fun onCleared() {
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         locationJob?.cancel()
-        cameraMoveJob?.cancel()
         trackPointsBatchJob?.cancel()
         try {
             getApplication<Application>().unregisterReceiver(trackPointReceiver)
