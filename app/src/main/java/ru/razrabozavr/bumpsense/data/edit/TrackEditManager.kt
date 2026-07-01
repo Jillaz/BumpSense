@@ -1,10 +1,12 @@
 package ru.razrabozavr.bumpsense.data.edit
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import ru.razrabozavr.bumpsense.domain.model.Track
 import ru.razrabozavr.bumpsense.domain.model.TrackPoint
@@ -17,12 +19,12 @@ import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
  * Менеджер для управления редактированием треков.
  *
  * ✅ РЕФАКТОРИНГ (Этап 5): Вынесено из MapViewModel для улучшения структуры кода.
- * - Инкапсулирует операции CRUD с треками
- * - Управляет состоянием режима редактирования
- * - Может быть протестирован независимо от ViewModel
+ * ✅ ИСПРАВЛЕНИЕ: Добавлена подписка на изменения БД для автоматического обновления UI
  */
-class TrackEditManager(private val trackRepository: TrackRepository) {
-
+class TrackEditManager(
+    private val trackRepository: TrackRepository,
+    private val scope: CoroutineScope
+) {
     private val _trackEditState = MutableStateFlow(TrackEditUiState())
     val trackEditState: StateFlow<TrackEditUiState> = _trackEditState.asStateFlow()
 
@@ -33,6 +35,29 @@ class TrackEditManager(private val trackRepository: TrackRepository) {
     val cameraBounds: StateFlow<CameraBounds?> = _cameraBounds.asStateFlow()
 
     private val _currentMapBounds = MutableStateFlow<CameraBounds?>(null)
+
+    // ✅ ИСПРАВЛЕНИЕ: Подписка на изменения БД
+    init {
+        observeDatabaseChanges()
+    }
+
+    /**
+     * ✅ ИСПРАВЛЕНИЕ: Подписываемся на все изменения треков в БД.
+     * При любом изменении (добавление, удаление, импорт) автоматически обновляем UI.
+     */
+    private fun observeDatabaseChanges() {
+        trackRepository.getAllTracks()
+            .onEach { tracks ->
+                Log.d("TrackEditManager", "📥 БД изменена, загружено треков: ${tracks.size}")
+                _trackEditState.update { current ->
+                    current.copy(
+                        allTracks = tracks,
+                        visibleTracks = filterTracksByVisibleArea(tracks, _currentMapBounds.value)
+                    )
+                }
+            }
+            .launchIn(scope)
+    }
 
     fun enterEditMode() {
         _isEditMode.value = true
@@ -52,6 +77,12 @@ class TrackEditManager(private val trackRepository: TrackRepository) {
 
     fun updateVisibleArea(bounds: CameraBounds?) {
         _currentMapBounds.value = bounds
+        // ✅ ИСПРАВЛЕНИЕ: При изменении bounds пересчитываем видимые треки
+        _trackEditState.update { current ->
+            current.copy(
+                visibleTracks = filterTracksByVisibleArea(current.allTracks, bounds)
+            )
+        }
     }
 
     fun focusOnTrack(trackId: Long) {
@@ -65,37 +96,11 @@ class TrackEditManager(private val trackRepository: TrackRepository) {
     }
 
     /**
-     * Загружает треки из БД и обновляет состояние.
-     */
-    suspend fun loadTracks() {
-        val allTracks = trackRepository.getAllTracks().first()
-        _trackEditState.update { current ->
-            current.copy(
-                allTracks = allTracks,
-                visibleTracks = filterTracksByVisibleArea(allTracks, _currentMapBounds.value)
-            )
-        }
-        Log.d("TrackEditManager", "📥 Загружено треков: ${allTracks.size}")
-    }
-
-    /**
      * Удаляет трек по ID.
      */
     suspend fun deleteTrack(trackId: Long) {
         trackRepository.deleteTrack(trackId)
-
-        val updatedTracks = _trackEditState.value.allTracks.filter { it.id != trackId }
-        _trackEditState.update { current ->
-            current.copy(
-                allTracks = updatedTracks,
-                visibleTracks = filterTracksByVisibleArea(updatedTracks, _currentMapBounds.value)
-            )
-        }
-
-        if (_trackEditState.value.focusedTrackId == trackId) {
-            clearTrackFocus()
-        }
-
+        // ✅ Состояние обновится автоматически через observeDatabaseChanges()
         Log.d("TrackEditManager", "🗑️ Трек #$trackId удалён")
     }
 

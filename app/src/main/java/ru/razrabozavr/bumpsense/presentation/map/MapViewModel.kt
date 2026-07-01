@@ -13,7 +13,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import ru.razrabozavr.bumpsense.BumpSenseApp
@@ -49,7 +48,8 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     private val settingsManager = SettingsManager(appPreferences)
 
     // ✅ РЕФАКТОРИНГ (Этап 5): Менеджер редактирования треков
-    private val trackEditManager = TrackEditManager(trackRepository)
+    // ✅ ИСПРАВЛЕНИЕ: Передаём viewModelScope для подписки на изменения БД
+    private val trackEditManager = TrackEditManager(trackRepository, viewModelScope)
 
     // ✅ РЕФАКТОРИНГ (Этап 6): Менеджер GPS-трекинга
     private val gpsTracker = GpsTracker(
@@ -122,16 +122,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
     fun exitEditMode() {
         trackEditManager.exitEditMode()
-        viewModelScope.launch {
-            val allTracks = trackRepository.getAllTracks().first()
-            _uiState.update { currentState ->
-                currentState.copy(
-                    isHistoryVisible = true,
-                    historyTracks = allTracks.map { track -> track.points },
-                    currentTrackPoints = emptyList()
-                )
-            }
-        }
     }
 
     fun selectTrackTab(tab: TrackListTab) {
@@ -147,6 +137,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch {
             val track = trackRepository.getTrackById(trackId)
             if (track != null && track.points.isNotEmpty()) {
+                val bounds = trackEditManager.calculateTrackBounds(track.points)
                 _uiState.update { current ->
                     current.copy(
                         isHistoryVisible = true,
@@ -169,8 +160,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
     private fun observeGpsTracker() {
         viewModelScope.launch {
             gpsTracker.currentLocation.collect { location ->
-                // Обновляем currentLocation только если оно не переопределено из Broadcast
-                // (при записи currentLocation обновляется через RecordingServiceReceiver)
                 if (location != null && !_uiState.value.isRecording) {
                     _uiState.update { it.copy(currentLocation = location) }
                 }
@@ -203,7 +192,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
                             pendingPoints.add(trackPoint)
                         }
 
-                        // ✅ Обновляем локацию через GpsTracker
                         val location = recordingServiceReceiver.createLocationFromEvent(event)
                         gpsTracker.forceLocationUpdate(location)
                         _uiState.update { current ->
@@ -215,7 +203,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
 
                         _uiState.update { it.copy(isRecording = false) }
 
-                        // ✅ Перезапуск GPS через GpsTracker
                         gpsTracker.startTracking(isRecording = false)
 
                         val pendingUri = pendingExportUri
@@ -292,7 +279,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         } else {
             Log.d("BumpSense", "▶️ Начало записи")
 
-            // ✅ Останавливаем GPS в UI через GpsTracker
             gpsTracker.stopTracking()
             Log.d("BumpSense", "⏸️ GPS в UI остановлен")
 
@@ -488,6 +474,5 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         gpsTracker.release()
         trackPointsBatchJob?.cancel()
-        // ✅ РЕФАКТОРИНГ (Этап 7): unregisterReceiver больше не нужен — RecordingServiceReceiver сам управляет регистрацией
     }
 }
