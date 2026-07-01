@@ -36,6 +36,8 @@ import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
 import ru.razrabozavr.bumpsense.service.RecordingService
+import kotlin.time.Duration.Companion.milliseconds
+
 
 class MapViewModel(application: Application) : AndroidViewModel(application),
     DefaultLifecycleObserver {
