@@ -1,7 +1,6 @@
 package ru.razrabozavr.bumpsense.presentation.map
 
 import android.app.Application
-import android.location.Location
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -32,6 +31,7 @@ import ru.razrabozavr.bumpsense.domain.model.TrackPoint
 import ru.razrabozavr.bumpsense.presentation.settings.SettingsState
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditUiState
 import ru.razrabozavr.bumpsense.presentation.track.TrackListTab
+import kotlin.time.Duration.Companion.milliseconds
 
 class MapViewModel(application: Application) : AndroidViewModel(application),
     DefaultLifecycleObserver {
@@ -147,7 +147,6 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         viewModelScope.launch {
             val track = trackRepository.getTrackById(trackId)
             if (track != null && track.points.isNotEmpty()) {
-                val bounds = trackEditManager.calculateTrackBounds(track.points)
                 _uiState.update { current ->
                     current.copy(
                         isHistoryVisible = true,
@@ -254,7 +253,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         trackPointsBatchJob?.cancel()
         trackPointsBatchJob = viewModelScope.launch {
             while (true) {
-                delay(500)
+                delay(500.milliseconds)
 
                 val pointsToFlush: List<TrackPoint>
                 synchronized(pendingPointsLock) {
@@ -316,7 +315,7 @@ class MapViewModel(application: Application) : AndroidViewModel(application),
         if (granted) {
             gpsTracker.startTracking(_uiState.value.isRecording)
         } else {
-            gpsTracker.setStatus(ru.razrabozavr.bumpsense.presentation.map.GpsStatus.UNAVAILABLE)
+            gpsTracker.setStatus(GpsStatus.UNAVAILABLE)
         }
     }
 
