@@ -1,6 +1,5 @@
 package ru.razrabozavr.bumpsense.presentation.update
 
-import android.app.Activity
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -66,9 +65,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                         _updateState.value = UpdateState.Idle
                     } else {
                         Log.e(TAG, "Failed to check for updates: $errorMessage")
-                        _updateState.value = UpdateState.Error(
-                            "Ошибка проверки обновлений"
-                        )
+                        _updateState.value = UpdateState.Idle
                     }
                 }
             )
@@ -80,7 +77,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         updateManager.startUpdate(
             appUpdateInfo = updateInfo,
             onSuccess = { resultCode ->
-                if (resultCode == Activity.RESULT_OK) {
+                if (resultCode == android.app.Activity.RESULT_OK) {
                     Log.d(TAG, "User agreed to update")
                     registerInstallStateListener()
                 } else {
@@ -90,9 +87,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
             },
             onFailure = { exception ->
                 Log.e(TAG, "Failed to start update", exception)
-                _updateState.value = UpdateState.Error(
-                    "Ошибка запуска обновления"
-                )
+                _updateState.value = UpdateState.Idle
             }
         )
     }
@@ -105,9 +100,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
             },
             onFailure = { exception ->
                 Log.e(TAG, "Failed to complete update", exception)
-                _updateState.value = UpdateState.Error(
-                    "Ошибка установки"
-                )
+                _updateState.value = UpdateState.Idle
             }
         )
     }
@@ -136,9 +129,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                 _updateState.value = UpdateState.Downloading(progress)
             }
             InstallStatus.FAILED -> {
-                _updateState.value = UpdateState.Error(
-                    "Ошибка загрузки: код ${state.installErrorCode}"
-                )
+                _updateState.value = UpdateState.Idle
             }
             InstallStatus.PENDING -> {
                 Log.d(TAG, "Update pending")
@@ -146,6 +137,8 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
             InstallStatus.UNKNOWN -> {
                 Log.d(TAG, "Unknown install status")
             }
+            // ✅ В RuStore SDK 10.2.0 НЕТ состояния INSTALLED
+            // После вызова completeUpdate() приложение перезапускается системой автоматически
         }
     }
 

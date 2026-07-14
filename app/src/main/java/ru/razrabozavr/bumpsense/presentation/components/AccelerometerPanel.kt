@@ -69,6 +69,7 @@ fun AccelerometerPanel(
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp)
                 )
             } else {
+                // Ускорение
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -89,6 +90,7 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
+                // Индекс
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -118,6 +120,7 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
+                // Максимальный индекс
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -150,13 +153,13 @@ fun AccelerometerPanel(
 
                 Spacer(modifier = Modifier.height(2.dp))
 
+                // ✅ Обновлённые текстовые метки для 4 уровней
                 Text(
                     text = when (bumpLevel) {
-                        BumpLevel.SMOOTH -> "Ровная"
-                        BumpLevel.SLIGHT -> "Лёгкая тряска"
-                        BumpLevel.MODERATE -> "Умеренная"
-                        BumpLevel.STRONG -> "Сильная"
-                        BumpLevel.EXTREME -> "Экстрем."
+                        BumpLevel.GOOD -> "Хорошая дорога"
+                        BumpLevel.SLIGHT -> "Небольшие неровности"
+                        BumpLevel.MODERATE -> "Заметные кочки"
+                        BumpLevel.STRONG -> "Сильные удары"
                     },
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontSize = 11.sp,

@@ -9,16 +9,21 @@ import kotlin.math.sqrt
  * ✅ ОПТИМИЗАЦИЯ:
  * - ArrayDeque вместо MutableList (O(1) для add/remove вместо O(n))
  * - Инкрементальный расчёт суммы квадратов (O(1) вместо O(n))
+ *
+ * ✅ ЧУВСТВИТЕЛЬНОСТЬ:
+ * - maxAcceleration уменьшен с 15f до 25f для большей чувствительности
+ * - Теперь при RMS=12.5 м/с² индекс=50 ("Заметные кочки")
+ * - При RMS=25 м/с² индекс=100 ("Сильные удары")
  */
 class BumpIndexCalculator(
     private val windowSize: Int = 50,
-    private val maxAcceleration: Float = 15f
+    private val maxAcceleration: Float = 25f  // ✅ УМЕНЬШЕНО с 15f до 25f
 ) {
-    // ✅ ИСПРАВЛЕНИЕ: ArrayDeque вместо MutableList
+    // ✅ ArrayDeque вместо MutableList
     // addLast() и removeFirst() — O(1) операции
     private val accelerationBuffer = ArrayDeque<Float>(windowSize)
 
-    // ✅ ИСПРАВЛЕНИЕ: Инкрементальная сумма квадратов для O(1) расчёта RMS
+    // ✅ Инкрементальная сумма квадратов для O(1) расчёта RMS
     private var sumOfSquares: Double = 0.0
 
     /**
@@ -27,7 +32,7 @@ class BumpIndexCalculator(
     fun addSample(acceleration: Float): Int {
         val squared = (acceleration * acceleration).toDouble()
 
-        // ✅ ИСПРАВЛЕНИЕ: O(1) операции вместо O(n)
+        // ✅ O(1) операции вместо O(n)
         if (accelerationBuffer.size >= windowSize) {
             val removed = accelerationBuffer.removeFirst()
             sumOfSquares -= (removed * removed).toDouble()
@@ -42,7 +47,7 @@ class BumpIndexCalculator(
     private fun calculateBumpIndex(): Int {
         if (accelerationBuffer.isEmpty()) return 0
 
-        // ✅ ИСПРАВЛЕНИЕ: O(1) расчёт вместо O(n) пересчёта суммы
+        // ✅ O(1) расчёт вместо O(n) пересчёта суммы
         val rms = sqrt(sumOfSquares / accelerationBuffer.size).toFloat()
 
         // Нормализуем в диапазон 0-100
