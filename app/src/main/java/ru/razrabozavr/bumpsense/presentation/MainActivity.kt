@@ -19,6 +19,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
 import ru.razrabozavr.bumpsense.presentation.map.MapScreen
 import ru.razrabozavr.bumpsense.presentation.map.MapViewModel
+import ru.razrabozavr.bumpsense.presentation.onboarding.OnboardingViewModel
+import ru.razrabozavr.bumpsense.presentation.onboarding.TermsAndConditionsDialog
 import ru.razrabozavr.bumpsense.presentation.theme.BumpSenseTheme
 import ru.razrabozavr.bumpsense.presentation.update.UpdateDialog
 import ru.razrabozavr.bumpsense.presentation.update.UpdateViewModel
@@ -27,6 +29,9 @@ class MainActivity : ComponentActivity() {
     private val mapViewModel: MapViewModel by viewModels()
     private val accelerometerViewModel: AccelerometerViewModel by viewModels()
     private val updateViewModel: UpdateViewModel by viewModels()
+
+    // ✅ НОВОЕ: ViewModel для управления экраном согласия
+    private val onboardingViewModel: OnboardingViewModel by viewModels()
 
     private val accelerometerLifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
@@ -44,12 +49,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(accelerometerLifecycleObserver)
-
         updateViewModel.checkForUpdates()
 
         setContent {
             val isDarkTheme by mapViewModel.isDarkTheme.collectAsState()
             val colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()
+
+            // ✅ Считываем состояние диалога согласия
+            val showTermsDialog by onboardingViewModel.showTermsDialog.collectAsState()
 
             BumpSenseTheme(colorScheme = colorScheme) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -60,11 +67,22 @@ class MainActivity : ComponentActivity() {
                         onImportClick = { }
                     )
 
-                    // ✅ Исправлено: убран параметр activity
                     UpdateDialog(
                         viewModel = updateViewModel,
                         onDismiss = { }
                     )
+
+                    // ✅ Показываем диалог, если условия еще не приняты
+                    if (showTermsDialog) {
+                        TermsAndConditionsDialog(
+                            onAccept = { onboardingViewModel.acceptTerms() },
+                            onDecline = {
+                                onboardingViewModel.declineTerms()
+                                finish() // ✅ Закрываем приложение при отказе
+                            },
+                            context = this@MainActivity
+                        )
+                    }
                 }
             }
         }

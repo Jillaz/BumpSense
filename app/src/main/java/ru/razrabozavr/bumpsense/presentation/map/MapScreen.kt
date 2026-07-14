@@ -8,7 +8,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +59,16 @@ import ru.razrabozavr.bumpsense.presentation.components.TopStatusBar
 import ru.razrabozavr.bumpsense.presentation.permissions.PermissionHandler
 import ru.razrabozavr.bumpsense.presentation.settings.SettingsScreen
 import ru.razrabozavr.bumpsense.presentation.track.TrackEditScreen
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun MapScreen(
@@ -390,15 +399,89 @@ fun MapScreen(
         }
 
         // Диалог "О программе"
+        // ✅ Диалог "О программе" (Структурированный с ссылками)
         if (showAboutDialog) {
             AlertDialog(
                 onDismissRequest = { showAboutDialog = false },
-                title = { Text(stringResource(R.string.about_title)) },
-                text = {
+                title = {
                     Text(
-                        text = stringResource(R.string.about_description),
-                        style = MaterialTheme.typography.bodyMedium
+                        text = stringResource(R.string.about_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold
                     )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 1. Версия приложения
+                        Text(
+                            text = "Версия 1.0",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        // 2. Описание приложения
+                        Text(
+                            text = "Мобильное приложение для записи GPS-треков с одновременным анализом качества дорожного покрытия в реальном времени с использованием встроенного акселерометра устройства.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        // 3. Блок ссылок
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "Юридическая информация:",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            // Ссылка на Политику конфиденциальности
+                            Text(
+                                text = "• Политика конфиденциальности",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textDecoration = TextDecoration.Underline
+                                ),
+                                modifier = Modifier.clickable {
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://razrabozavr.github.io/Razrabozavr/BumpSense-privacy-policy")
+                                    )
+                                    context.startActivity(intent)
+                                }
+                            )
+
+                            // Ссылка на Пользовательское соглашение
+                            Text(
+                                text = "• Пользовательское соглашение",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textDecoration = TextDecoration.Underline
+                                ),
+                                modifier = Modifier.clickable {
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://razrabozavr.github.io/Razrabozavr/BumpSense-terms-of-service")
+                                    )
+                                    context.startActivity(intent)
+                                }
+                            )
+                        }
+
+                        // 4. Копирайт
+                        Text(
+                            text = "© 2024 Razrabozavr",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
                 },
                 confirmButton = {
                     TextButton(onClick = { showAboutDialog = false }) {
