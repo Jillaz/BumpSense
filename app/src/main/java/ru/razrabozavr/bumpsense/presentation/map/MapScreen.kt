@@ -199,6 +199,7 @@ fun MapScreen(
 
                 SettingsInfoPanel(
                     settingsState = settingsState,
+                    onClick = { viewModel.enterSettingsMode() },
                     modifier = Modifier.width(132.dp)
                 )
             }
