@@ -61,10 +61,10 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun startUpdate() { // ✅ Убран параметр activity
+    fun startUpdate() {
         val updateInfo = currentUpdateInfo ?: return
         updateManager.startUpdate(
-            appUpdateInfo = updateInfo, // ✅ Убран параметр activity
+            appUpdateInfo = updateInfo,
             onSuccess = { resultCode ->
                 if (resultCode == Activity.RESULT_OK) {
                     registerInstallStateListener()
@@ -121,15 +121,22 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                     "Ошибка загрузки: код ${state.installErrorCode}"
                 )
             }
-            InstallStatus.INSTALLED -> {
-                _updateState.value = UpdateState.Idle
+            InstallStatus.PENDING -> {
+                // Обновление поставлено в очередь, ждём DOWNLOADING
+                Log.d(TAG, "Update is pending")
             }
-            else -> Unit
+            InstallStatus.UNKNOWN -> {
+                // Неизвестное состояние, игнорируем или сбрасываем
+                Log.d(TAG, "Unknown install status")
+            }
+            // Состояния INSTALLED в RuStore SDK 10.2.0 не существует.
+            // После вызова completeUpdate() приложение перезапускается системой автоматически.
         }
     }
 
     override fun onCleared() {
         super.onCleared()
+        // Гарантированно удаляем слушатель при уничтожении ViewModel
         installStateListener?.let { updateManager.unregisterListener(it) }
     }
 }
