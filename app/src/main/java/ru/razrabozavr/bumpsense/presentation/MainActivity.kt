@@ -20,24 +20,22 @@ import ru.razrabozavr.bumpsense.data.sensor.AccelerometerViewModel
 import ru.razrabozavr.bumpsense.presentation.map.MapScreen
 import ru.razrabozavr.bumpsense.presentation.map.MapViewModel
 import ru.razrabozavr.bumpsense.presentation.theme.BumpSenseTheme
+import ru.razrabozavr.bumpsense.presentation.update.UpdateDialog
+import ru.razrabozavr.bumpsense.presentation.update.UpdateViewModel
 
 class MainActivity : ComponentActivity() {
     private val mapViewModel: MapViewModel by viewModels()
     private val accelerometerViewModel: AccelerometerViewModel by viewModels()
+    private val updateViewModel: UpdateViewModel by viewModels()
 
-    // ✅ НОВОЕ: Lifecycle observer для управления акселерометром
     private val accelerometerLifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-            // ✅ Перезапускаем акселерометр при возврате приложения на передний план
             accelerometerViewModel.restartCollecting()
         }
-
         override fun onStop(owner: LifecycleOwner) {
-            // ✅ Останавливаем акселерометр, если запись не идёт
             if (!mapViewModel.uiState.value.isRecording) {
                 accelerometerViewModel.stopCollecting()
             }
-            // Если запись идёт - акселерометр продолжает работать для RecordingService
         }
     }
 
@@ -45,11 +43,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // ✅ Регистрируем lifecycle observer для акселерометра
         ProcessLifecycleOwner.get().lifecycle.addObserver(accelerometerLifecycleObserver)
 
+        updateViewModel.checkForUpdates()
+
         setContent {
-            // Читаем состояние темы из ViewModel
             val isDarkTheme by mapViewModel.isDarkTheme.collectAsState()
             val colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()
 
@@ -61,6 +59,12 @@ class MainActivity : ComponentActivity() {
                         onExportClick = { },
                         onImportClick = { }
                     )
+
+                    // ✅ Исправлено: убран параметр activity
+                    UpdateDialog(
+                        viewModel = updateViewModel,
+                        onDismiss = { }
+                    )
                 }
             }
         }
@@ -68,7 +72,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // ✅ Удаляем observer при уничтожении Activity
         ProcessLifecycleOwner.get().lifecycle.removeObserver(accelerometerLifecycleObserver)
     }
 }
