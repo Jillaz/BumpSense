@@ -7,12 +7,13 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+    @Suppress("UnstableApiUsage")
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
 
-        // ✅ Репозиторий RuStore SDK (обязательно здесь из-за FAIL_ON_PROJECT_REPOS)
+        // ✅ Репозиторий RuStore SDK (ставим ПЕРЕД MapLibre для приоритета)
         maven {
             url = uri("https://artifactory-external.vkpartner.ru/artifactory/maven")
         }
