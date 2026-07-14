@@ -9,7 +9,6 @@ lifecycleProcess = "2.11.0"
 activityCompose = "1.13.0"
 kotlin = "2.2.10"
 composeBom = "2026.02.01"
-
 # Новые зависимости
 ksp = "2.2.10-2.0.2"
 roomVersion = "2.7.1"
@@ -17,6 +16,7 @@ coroutinesVersion = "1.10.1"
 maplibreVersion = "11.8.6"
 locationVersion = "21.3.0"
 materialIconsExtended = "1.7.8"
+rustoreAppupdate = "10.2.0"
 
 [libraries]
 androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycleProcess" }
@@ -34,24 +34,21 @@ androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "u
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
-
-# Material Icons Extended (для иконок MyLocation, History и т.д.)
+# Material Icons Extended
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
-
 # Room
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "roomVersion" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "roomVersion" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "roomVersion" }
-
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutinesVersion" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesVersion" }
-
 # MapLibre
 maplibre-android = { group = "org.maplibre.gl", name = "android-sdk", version.ref = "maplibreVersion" }
-
 # Location
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "locationVersion" }
+# RuStore Updates SDK
+rustore-appupdate = { group = "ru.rustore.sdk", name = "appupdate", version.ref = "rustoreAppupdate" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

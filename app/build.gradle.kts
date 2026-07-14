@@ -102,6 +102,9 @@ dependencies {
     // MapLibre
     implementation(libs.maplibre.android)
 
+    // SDK Rustore
+    implementation(libs.rustore.appupdate)
+
     // Lifecycle (для ProcessLifecycleOwner)
     implementation(libs.androidx.lifecycle.process)
 
